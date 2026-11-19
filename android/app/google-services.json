@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "212813042773",
+    "project_id": "dkdfruits-db965",
+    "storage_bucket": "dkdfruits-db965.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:212813042773:android:582245387e462a1822b0dc",
+        "android_client_info": {
+          "package_name": "com.dkdfruits"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "212813042773-nsdsodbeadiohumi9p5s3tg0atr0iaks.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDQ-_83J0QlPvNHZ5sk215TdpAN25N_uYM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "212813042773-nsdsodbeadiohumi9p5s3tg0atr0iaks.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -7,9 +7,17 @@ import {
   verifyEmailOTP,
 } from '../controllers/authController.js';
 
+import {
+  saveCustomerProfile,
+  getMyProfile,
+} from '../controllers/customerController.js';
+
+import {
+  authenticateToken,
+} from '../middleware/authMiddleware.js';
+
 const router = express.Router();
 
-// Limit OTP requests per IP address
 const sendOTPLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
@@ -21,7 +29,6 @@ const sendOTPLimiter = rateLimit({
   },
 });
 
-// Limit OTP verification attempts per IP
 const verifyOTPLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 15,
@@ -34,7 +41,10 @@ const verifyOTPLimiter = rateLimit({
 });
 
 router.post('/send-otp', sendOTPLimiter, sendOTP);
-
 router.post('/verify-otp', verifyOTPLimiter, verifyEmailOTP);
+
+// Protected customer APIs
+router.post('/customer/profile', authenticateToken, saveCustomerProfile);
+router.get('/customer/me', authenticateToken, getMyProfile);
 
 export default router;

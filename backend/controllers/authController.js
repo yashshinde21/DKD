@@ -1,9 +1,10 @@
 
 import jwt from 'jsonwebtoken';
+
 import {generateOTP, hashOTP, verifyOTP} from '../utils/otp.js';
 import {sendOTPEmail} from '../config/email.js';
+import {db} from '../config/firebaseAdmin.js';
 
-// Temporary OTP storage for prototype development
 const otpStore = new Map();
 
 const OTP_EXPIRY = 5 * 60 * 1000;
@@ -66,15 +67,8 @@ export const sendOTP = async (req, res) => {
   }
 };
 
-// VERIFY OTP
+// VERIFY OTP AND CHECK CUSTOMER PROFILE
 export const verifyEmailOTP = async (req, res) => {
-  console.log('VERIFY OTP API HIT');
-  console.log('Request body:', {
-    email: req.body?.email,
-    otpReceived: Boolean(req.body?.otp),
-    otpLength: String(req.body?.otp || '').length,
-  });
-
   try {
     const email = req.body.email?.trim().toLowerCase();
     const otp = String(req.body.otp || '').trim();
@@ -87,13 +81,6 @@ export const verifyEmailOTP = async (req, res) => {
     }
 
     const record = otpStore.get(email);
-
-    console.log('OTP record exists:', !!record);
-
-if (record) {
-  console.log('OTP expired:', Date.now() > record.expiresAt);
-  console.log('Attempts:', record.attempts);
-}
 
     if (!record) {
       return res.status(400).json({
@@ -122,9 +109,7 @@ if (record) {
 
     const isValidOTP = verifyOTP(otp, record.hash);
 
-console.log('OTP hash matched:', isValidOTP);
-
-if (!isValidOTP) {
+    if (!isValidOTP) {
       record.attempts += 1;
 
       if (record.attempts >= MAX_ATTEMPTS) {
@@ -144,6 +129,13 @@ if (!isValidOTP) {
     // OTP is valid; remove it so it cannot be reused.
     otpStore.delete(email);
 
+    // Check whether this customer already has a Firestore profile.
+    const customerRef = db.collection('customers').doc(email);
+    const customerSnapshot = await customerRef.get();
+
+    const customerExists = customerSnapshot.exists;
+    const customer = customerExists ? customerSnapshot.data() : null;
+
     const token = jwt.sign(
       {email},
       process.env.JWT_SECRET,
@@ -156,11 +148,12 @@ if (!isValidOTP) {
       token,
       user: {
         email,
-        isProfileComplete: false,
+        isProfileComplete: customerExists,
+        ...(customerExists ? {profile: customer} : {}),
       },
     });
   } catch (error) {
-  console.error('Verify OTP error:', error);
+    console.error('Verify OTP error:', error);
 
     return res.status(500).json({
       success: false,

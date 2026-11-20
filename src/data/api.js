@@ -1,9 +1,8 @@
-
 import axios from 'axios';
 
 const API = axios.create({
-  baseURL: 'http://10.194.194.102:5050/api',
-  timeout: 15000,
+  baseURL: 'https://dkd-fruits-backend.onrender.com/api',
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },

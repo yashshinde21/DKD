@@ -16,6 +16,9 @@ import {
   BackHandler,
 } from 'react-native';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import API from '../data/api';
+
 import Geolocation from 'react-native-geolocation-service';
 import colors from '../theme/colors';
 
@@ -23,6 +26,7 @@ const RegisterScreen = ({navigation, route}) => {
   const mode = route?.params?.mode || 'Retail';
   const email = route?.params?.email || '';
   const token = route?.params?.token || '';
+  const [isSaving, setIsSaving] = useState(false);
 
   // Check whether the selected account is Bulk or Wholesale.
   const isBulk =
@@ -190,48 +194,62 @@ const RegisterScreen = ({navigation, route}) => {
   );
 
   // Validate and register customer.
-  const handleRegister = () => {
-    const newErrors = {};
 
-    if (!name.trim()) {
-      newErrors.name = 'Please enter your full name.';
-    }
+const handleRegister = async () => {
+  const newErrors = {};
 
-    if (!/^[6-9]\d{9}$/.test(phone.trim())) {
-      newErrors.phone = 'Enter a valid 10-digit mobile number.';
-    }
+  if (!name.trim()) {
+    newErrors.name = 'Please enter your full name.';
+  }
 
-    // Business validation only for Bulk customers.
-    if (isBulk && !businessName.trim()) {
-      newErrors.businessName = 'Please enter your business name.';
-    }
+  if (!/^[6-9]\d{9}$/.test(phone.trim())) {
+    newErrors.phone = 'Enter a valid 10-digit mobile number.';
+  }
 
-    if (isBulk && !businessType.trim()) {
-      newErrors.businessType = 'Please enter your business type.';
-    }
+  if (isBulk && !businessName.trim()) {
+    newErrors.businessName = 'Please enter your business name.';
+  }
 
-    if (!house.trim()) {
-      newErrors.house = 'Enter your house or flat number.';
-    }
+  if (isBulk && !businessType.trim()) {
+    newErrors.businessType = 'Please enter your business type.';
+  }
 
-    if (!address.trim()) {
-      newErrors.address = 'Please enter your delivery address.';
-    }
+  if (!house.trim()) {
+    newErrors.house = 'Enter your house or flat number.';
+  }
 
-    setErrors(newErrors);
+  if (!address.trim()) {
+    newErrors.address = 'Please enter your delivery address.';
+  }
 
-    if (Object.keys(newErrors).length > 0) {
-      return;
-    }
+  setErrors(newErrors);
 
-    // Customer profile
+  if (Object.keys(newErrors).length > 0) {
+    return;
+  }
+
+  if (!email || !token) {
+    Alert.alert(
+      'Session Error',
+      'Your login session is missing. Please verify your email again.',
+    );
+    return;
+  }
+
+  if (isSaving) {
+    return;
+  }
+
+  setIsSaving(true);
+
+  try {
     const profile = {
       name: name.trim(),
-      email,
       phone: phone.trim(),
-      mode,
 
-      // Add business details only for Bulk customers.
+      // Backend accepts only retail or wholesale.
+      mode: isBulk ? 'wholesale' : 'retail',
+
       ...(isBulk && {
         businessName: businessName.trim(),
         businessType: businessType.trim(),
@@ -240,32 +258,69 @@ const RegisterScreen = ({navigation, route}) => {
       address: {
         house: house.trim(),
         fullAddress: address.trim(),
-        location,
+        location: location || null,
       },
-
-      token,
     };
 
-    // Temporary: connect your backend profile API here.
-    console.log('DKD Customer Profile:', profile);
+    const response = await API.post(
+      '/auth/customer/profile',
+      profile,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (response.data.success) {
+
+      await AsyncStorage.setItem(
+        'dkd_user',
+        JSON.stringify({
+          email,
+          isProfileComplete: true,
+          profile: response.data.user,
+        }),
+      );
+
+      await AsyncStorage.setItem(
+        'dkd_mode',
+        response.data.user.mode || profile.mode,
+      );
+
+      Alert.alert(
+        'Profile Saved',
+        'Your details have been saved successfully.',
+        [
+          {
+            text: 'Continue',
+            onPress: () => {
+              navigation.replace('Home', {
+                name: profile.name,
+                mode: profile.mode,
+                profile: response.data.user,
+              });
+            },
+          },
+        ],
+      );
+    }
+  } catch (error) {
+    console.log(
+      'CUSTOMER PROFILE SAVE ERROR:',
+      error.response?.data || error.message,
+    );
 
     Alert.alert(
-      'Profile Completed',
-      'Your details have been successfully entered.',
-      [
-        {
-          text: 'Continue',
-          onPress: () => {
-            navigation.replace('Home', {
-              name: profile.name,
-              mode,
-              profile,
-            });
-          },
-        },
-      ],
+      'Registration Failed',
+      error.response?.data?.message ||
+        'Unable to save your profile. Please try again.',
     );
-  };
+  } finally {
+    setIsSaving(false);
+  }
+};
+
 
   return (
     <KeyboardAvoidingView
@@ -427,16 +482,20 @@ const RegisterScreen = ({navigation, route}) => {
           </View>
 
           {/* SAVE */}
-
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={handleRegister}
-            activeOpacity={0.85}>
-
-            <Text style={styles.submitText}>
-              Save & Continue
-            </Text>
-          </TouchableOpacity>
+          
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={handleRegister}
+              disabled={isSaving}
+              activeOpacity={0.85}>
+              {isSaving ? (
+                <ActivityIndicator color={colors.white} />
+              ) : (
+                <Text style={styles.submitText}>
+                  Save & Continue
+                </Text>
+              )}
+            </TouchableOpacity>
 
           <Text style={styles.footer}>
             © DKD Fruits & Vegetables Pvt. Ltd.

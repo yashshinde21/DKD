@@ -48,120 +48,110 @@ const OTPScreen = ({navigation, route}) => {
     setError('');
   };
 
-  // VERIFY OTP
-  const handleVerify = async () => {
-    if (verifyLock.current || loading) return;
+  
+// VERIFY OTP
+const handleVerify = async () => {
+  if (verifyLock.current || loading) return;
 
-    if (!email) {
-      setError('Email address is missing. Please start again.');
+  if (!email) {
+    setError('Email address is missing. Please start again.');
+    return;
+  }
+
+  if (otp.length !== 6) {
+    setError('Please enter the complete 6-digit OTP.');
+    return;
+  }
+
+  verifyLock.current = true;
+  setLoading(true);
+  setError('');
+
+  try {
+    const response = await API.post('/auth/verify-otp', {
+      email,
+      otp: otp.trim(),
+    });
+
+    console.log('OTP VERIFY STATUS:', response.status);
+    console.log('OTP VERIFY SUCCESS:', response.data?.success);
+
+    if (response.data?.success !== true) {
+      setError(response.data?.message || 'OTP verification failed.');
       return;
     }
 
-    if (otp.length !== 6) {
-      setError('Please enter the complete 6-digit OTP.');
+    const {token, user} = response.data;
+
+    if (!token || !user) {
+      setError('Server did not return login information.');
       return;
     }
 
-    verifyLock.current = true;
-    setLoading(true);
-    setError('');
+    // Save login session
+    await AsyncStorage.setItem('dkd_token', token);
 
-    try {
-      const response = await API.post('/auth/verify-otp', {
-        email,
-        otp: otp.trim(),
+    await AsyncStorage.setItem(
+      'dkd_user',
+      JSON.stringify(user),
+    );
+
+    await AsyncStorage.setItem(
+      'dkd_mode',
+      user.profile?.mode || mode,
+    );
+
+    console.log('DKD SESSION SAVED SUCCESSFULLY');
+
+    // Existing customer: go directly to Home
+    if (user.isProfileComplete) {
+      navigation.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Home',
+            params: {
+              name: user.profile?.name || email.split('@')[0],
+              email,
+              mode: user.profile?.mode || mode,
+              profile: user.profile,
+            },
+          },
+        ],
       });
-
-      console.log('OTP VERIFY STATUS:', response.status);
-      console.log('OTP VERIFY SUCCESS:', response.data?.success);
-
-      if (response.data?.success !== true) {
-        setError(
-          response.data?.message || 'OTP verification failed.',
-        );
-        return;
-      }
-
-      const {token, user} = response.data;
-
-      if (!token || !user) {
-        setError('Server did not return login information.');
-        return;
-      }
-
-      // Save login session
-      try {
-       await AsyncStorage.setItem('dkd_token', token);
-
-await AsyncStorage.setItem(
-  'dkd_user',
-  JSON.stringify(user),
-);
-
-await AsyncStorage.setItem('dkd_mode', mode);
-      } catch (storageError) {
-        console.error('SESSION SAVE ERROR:', storageError);
-        setError(
-          'Email verified, but session could not be saved. Please check storage permissions.',
-        );
-        return;
-      }
-
-      console.log('DKD SESSION SAVED SUCCESSFULLY');
-
-      // Navigate without allowing return to OTP
-      if (user.isProfileComplete) {
-        navigation.reset({
-          index: 0,
-          routes: [
-            {
-              name: 'Home',
-              params: {
-                name: user.name || email.split('@')[0],
-                mode,
-              },
+    } else {
+      // New customer: complete registration
+      navigation.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Register',
+            params: {
+              email,
+              mode,
+              token,
+              user,
             },
-          ],
-        });
-      } else {
-        navigation.reset({
-          index: 0,
-          routes: [
-            {
-              name: 'Register',
-              params: {
-                email,
-                mode,
-                token,
-                user,
-              },
-            },
-          ],
-        });
-      }
-    } catch (err) {
-      console.error(
-        'OTP VERIFICATION ERROR:',
-        err.response?.data || err.message,
-      );
-
-      if (err.response) {
-        setError(
-          err.response.data?.message ||
-          `Verification failed (HTTP ${err.response.status}).`,
-        );
-      } else if (err.request) {
-        setError(
-          'Cannot connect to DKD server. Check your internet and server IP.',
-        );
-      } else {
-        setError(err.message || 'Something went wrong.');
-      }
-    } finally {
-      verifyLock.current = false;
-      setLoading(false);
+          },
+        ],
+      });
     }
-  };
+  } catch (err) {
+    console.error(
+      'OTP VERIFY ERROR:',
+      err.response?.data || err.message,
+    );
+
+    setError(
+      err.response?.data?.message ||
+      'OTP verification failed. Please try again.',
+    );
+  } finally {
+    verifyLock.current = false;
+    setLoading(false);
+  }
+};
+
 
   // RESEND OTP
   const handleResend = async () => {

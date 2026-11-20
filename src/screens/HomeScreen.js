@@ -1,3 +1,4 @@
+
 import React, {useState, useRef, useEffect} from 'react';
 
 import {
@@ -14,11 +15,12 @@ import {
   Platform,
 } from 'react-native';
 
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import {SafeAreaView} from 'react-native-safe-area-context';
 import colors from '../theme/colors';
 
-/* ---------- DATA ---------- */
+/* ---------------- DATA ---------------- */
 
-// Seasonal fruit categories (edit this list as the season changes)
 const categories = [
   {name: 'All', emoji: '🧺'},
   {name: 'Apples', emoji: '🍎'},
@@ -30,8 +32,6 @@ const categories = [
   {name: 'Sweet Lime', emoji: '🍋'},
 ];
 
-// price = selling price, mrp = original price (mrp > price means discount)
-// bg = soft card tint used in the deals slider
 const fruits = [
   {
     id: '1',
@@ -150,7 +150,6 @@ const discountPercent = item =>
     ? Math.round(((item.mrp - item.price) / item.mrp) * 100)
     : 0;
 
-// Top discounted items for the slider
 const deals = fruits
   .filter(item => discountPercent(item) > 0)
   .sort((a, b) => discountPercent(b) - discountPercent(a))
@@ -161,7 +160,7 @@ const SLIDE_GAP = 12;
 const SLIDE_WIDTH = SCREEN_WIDTH - 40;
 const SLIDE_INTERVAL = SLIDE_WIDTH + SLIDE_GAP;
 
-/* ---------- ADD / QUANTITY CONTROL ---------- */
+/* ---------------- ADD BUTTON ---------------- */
 
 const AddControl = ({qty, onAdd, onRemove, onDark, color}) => {
   if (qty === 0) {
@@ -187,24 +186,28 @@ const AddControl = ({qty, onAdd, onRemove, onDark, color}) => {
     <View style={[styles.stepper, {backgroundColor: background}]}>
       <TouchableOpacity
         style={styles.stepperButton}
-        onPress={onRemove}
-        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-        <Text style={[styles.stepperSymbol, {color: textColor}]}>−</Text>
+        onPress={onRemove}>
+        <Text style={[styles.stepperSymbol, {color: textColor}]}>
+          −
+        </Text>
       </TouchableOpacity>
 
-      <Text style={[styles.stepperQty, {color: textColor}]}>{qty}</Text>
+      <Text style={[styles.stepperQty, {color: textColor}]}>
+        {qty}
+      </Text>
 
       <TouchableOpacity
         style={styles.stepperButton}
-        onPress={onAdd}
-        hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
-        <Text style={[styles.stepperSymbol, {color: textColor}]}>+</Text>
+        onPress={onAdd}>
+        <Text style={[styles.stepperSymbol, {color: textColor}]}>
+          +
+        </Text>
       </TouchableOpacity>
     </View>
   );
 };
 
-/* ---------- SCREEN ---------- */
+/* ---------------- HOME SCREEN ---------------- */
 
 const HomeScreen = ({navigation, route}) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -218,14 +221,20 @@ const HomeScreen = ({navigation, route}) => {
   const mode = route?.params?.mode || 'Retail';
   const customerName = route?.params?.name || 'Customer';
 
-  // Auto-slide the discount banner
+  // Automatic deals slider.
   useEffect(() => {
+    if (deals.length === 0) {
+      return;
+    }
+
     const timer = setInterval(() => {
       const next = (dealIndex.current + 1) % deals.length;
+
       dealListRef.current?.scrollToOffset({
         offset: next * SLIDE_INTERVAL,
         animated: true,
       });
+
       dealIndex.current = next;
       setActiveDeal(next);
     }, 3500);
@@ -237,49 +246,74 @@ const HomeScreen = ({navigation, route}) => {
     const index = Math.round(
       event.nativeEvent.contentOffset.x / SLIDE_INTERVAL,
     );
+
     dealIndex.current = index;
     setActiveDeal(index);
   };
 
-  const addToCart = id =>
-    setCart(previous => ({...previous, [id]: (previous[id] || 0) + 1}));
+  // Add item.
+  const addToCart = id => {
+    setCart(previous => ({
+      ...previous,
+      [id]: (previous[id] || 0) + 1,
+    }));
+  };
 
-  const removeFromCart = id =>
+  // Remove item.
+  const removeFromCart = id => {
     setCart(previous => {
       const quantity = (previous[id] || 0) - 1;
       const next = {...previous};
+
       if (quantity <= 0) {
         delete next[id];
       } else {
         next[id] = quantity;
       }
+
       return next;
     });
+  };
 
-  const cartCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+  const cartCount = Object.values(cart).reduce(
+    (sum, qty) => sum + qty,
+    0,
+  );
+
   const cartTotal = fruits.reduce(
     (sum, item) => sum + item.price * (cart[item.id] || 0),
     0,
   );
 
+  // Search and category filtering.
   const query = search.trim().toLowerCase();
+
   const filteredFruits = fruits.filter(item => {
     const matchesCategory =
-      selectedCategory === 'All' || item.category === selectedCategory;
+      selectedCategory === 'All' ||
+      item.category === selectedCategory;
+
     const matchesSearch =
       !query ||
       item.name.toLowerCase().includes(query) ||
       item.category.toLowerCase().includes(query);
+
     return matchesCategory && matchesSearch;
   });
 
+  // Deal card.
   const renderDeal = ({item}) => (
     <View style={[styles.dealCard, {backgroundColor: item.bg}]}>
       <View style={styles.dealContent}>
-        <Text style={styles.dealDiscount}>{discountPercent(item)}% OFF</Text>
+        <Text style={styles.dealDiscount}>
+          {discountPercent(item)}% OFF
+        </Text>
 
         <Text style={styles.dealName}>{item.name}</Text>
-        <Text style={styles.dealDescription}>{item.description}</Text>
+
+        <Text style={styles.dealDescription}>
+          {item.description}
+        </Text>
 
         <View style={styles.dealPriceRow}>
           <Text style={styles.dealPrice}>₹{item.price}</Text>
@@ -303,247 +337,309 @@ const HomeScreen = ({navigation, route}) => {
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar backgroundColor={colors.primary} barStyle="light-content" />
+    <SafeAreaView
+      style={styles.safeArea}
+      edges={['top']}>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{paddingBottom: cartCount > 0 ? 90 : 20}}>
-        {/* HEADER */}
-        <View style={styles.header}>
-          <View style={styles.headerTop}>
-            <View style={styles.headerText}>
-              <Text style={styles.hello} numberOfLines={1}>
-                Hello, {customerName} 👋
-              </Text>
-              <View style={styles.headerSubRow}>
-                <Text style={styles.headerSub}>Fresh from DKD Fruits</Text>
-                <View style={styles.modeBadge}>
-                  <Text style={styles.modeText}>{mode}</Text>
-                </View>
+      <StatusBar
+        backgroundColor={colors.primary}
+        barStyle="light-content"
+      />
+
+      <View style={styles.container}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{paddingBottom: 20}}>
+
+          {/* GREEN DELIVERY HEADER */}
+          <View style={styles.header}>
+            <View style={styles.deliveryTopRow}>
+              <View style={styles.deliveryTextBlock}>
+                <Text style={styles.deliveryEyebrow}>
+                  DKD Fruits delivers in
+                </Text>
+
+                <Text style={styles.deliveryTime}>
+                  Freshness at your door
+                </Text>
+
+                <Text
+                  style={styles.deliveryAddress}
+                  numberOfLines={1}>
+                  Select your delivery address ▼
+                </Text>
               </View>
+
+              <TouchableOpacity
+                style={styles.profileButton}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('Profile')}>
+                <Text style={styles.profileIcon}>👤</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* SEARCH BAR */}
+           <View style={styles.searchContainer}>
+  <MaterialCommunityIcons
+    name="magnify"
+    size={25}
+    color="#333333"
+  />
+
+  <TextInput
+    style={styles.searchInput}
+    placeholder='Search "apple"'
+    placeholderTextColor="#888888"
+    value={search}
+    onChangeText={setSearch}
+  />
+
+  <TouchableOpacity
+    style={styles.micButton}
+    onPress={() =>
+  Alert.alert('Voice Search', 'Voice search will be available soon.')
+}
+    activeOpacity={0.7}
+  >
+    <MaterialCommunityIcons
+      name="microphone"
+      size={25}
+      color="#222222"
+    />
+  </TouchableOpacity>
+</View>
+</View>
+
+          {/* CATEGORIES */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              Shop by Category
+            </Text>
+
+            <Text style={styles.sectionHint}>Fresh today</Text>
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryList}>
+
+            {categories.map(category => {
+              const active = selectedCategory === category.name;
+
+              return (
+                <TouchableOpacity
+                  key={category.name}
+                  style={styles.categoryItem}
+                  onPress={() =>
+                    setSelectedCategory(category.name)
+                  }
+                  activeOpacity={0.8}>
+
+                  <View
+                    style={[
+                      styles.categoryCircle,
+                      active && styles.categoryCircleActive,
+                    ]}>
+                    <Text style={styles.categoryEmoji}>
+                      {category.emoji}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.categoryText,
+                      active && styles.categoryTextActive,
+                    ]}
+                    numberOfLines={1}>
+                    {category.name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* TODAY'S DEALS */}
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>
+                Today's Deals
+              </Text>
+
+              <Text style={styles.sectionSub}>
+                Special offers you don't want to miss
+              </Text>
+            </View>
+
+            <View style={styles.liveBadge}>
+              <Text style={styles.liveText}>LIVE</Text>
+            </View>
+          </View>
+
+          <FlatList
+            ref={dealListRef}
+            data={deals}
+            renderItem={renderDeal}
+            keyExtractor={item => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={SLIDE_INTERVAL}
+            decelerationRate="fast"
+            disableIntervalMomentum
+            contentContainerStyle={styles.dealList}
+            ItemSeparatorComponent={() => (
+              <View style={{width: SLIDE_GAP}} />
+            )}
+            onMomentumScrollEnd={onDealScrollEnd}
+          />
+
+          <View style={styles.dots}>
+            {deals.map((item, index) => (
+              <View
+                key={item.id}
+                style={[
+                  styles.dot,
+                  index === activeDeal && styles.dotActive,
+                ]}
+              />
+            ))}
+          </View>
+
+          {/* BULK ENQUIRY */}
+          <View style={styles.bulkBanner}>
+            <View style={styles.bulkContent}>
+              <Text style={styles.bulkTitle}>
+                Buying in bulk?
+              </Text>
+
+              <Text style={styles.bulkText}>
+                For shops, retailers and business orders.
+              </Text>
             </View>
 
             <TouchableOpacity
-              style={styles.cartButton}
+              style={styles.bulkButton}
+              activeOpacity={0.85}
               onPress={() =>
                 Alert.alert(
-                  'My Cart',
-                  `${cartCount} items • ₹${cartTotal}`,
+                  'Bulk Enquiry',
+                  'Our team will contact you soon.',
                 )
               }>
-              <Text style={styles.cartIcon}>🛒</Text>
-              {cartCount > 0 && (
-                <View style={styles.cartBadge}>
-                  <Text style={styles.cartBadgeText}>{cartCount}</Text>
-                </View>
-              )}
+              <Text style={styles.bulkButtonText}>
+                Add Enquiry →
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* SEARCH */}
-          <View style={styles.searchContainer}>
-            <Text style={styles.searchIcon}>🔍</Text>
-            <TextInput
-              style={styles.searchInput}
-              placeholder='Search "apples"'
-              placeholderTextColor={colors.gray}
-              value={search}
-              onChangeText={setSearch}
-              returnKeyType="search"
-            />
-            {!!search && (
-              <TouchableOpacity onPress={() => setSearch('')}>
-                <Text style={styles.clearText}>✕</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {/* SEASONAL CATEGORIES */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Seasonal Fruits</Text>
-          <Text style={styles.sectionHint}>In season now</Text>
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryList}>
-          {categories.map(category => {
-            const active = selectedCategory === category.name;
-            return (
-              <TouchableOpacity
-                key={category.name}
-                style={styles.categoryItem}
-                onPress={() => setSelectedCategory(category.name)}
-                activeOpacity={0.8}>
-                <View
-                  style={[
-                    styles.categoryCircle,
-                    active && styles.categoryCircleActive,
-                  ]}>
-                  <Text style={styles.categoryEmoji}>{category.emoji}</Text>
-                </View>
-                <Text
-                  style={[
-                    styles.categoryText,
-                    active && styles.categoryTextActive,
-                  ]}
-                  numberOfLines={1}>
-                  {category.name}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* DISCOUNT SLIDER */}
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionTitle}>Today's Deals</Text>
-            <Text style={styles.sectionSub}>
-              Special offers you don't want to miss
+          {/* FRUIT PRODUCTS */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {selectedCategory === 'All'
+                ? 'All Fruits'
+                : selectedCategory}
             </Text>
-          </View>
-          <View style={styles.liveBadge}>
-            <Text style={styles.liveText}>LIVE</Text>
-          </View>
-        </View>
 
-        <FlatList
-          ref={dealListRef}
-          data={deals}
-          renderItem={renderDeal}
-          keyExtractor={item => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          snapToInterval={SLIDE_INTERVAL}
-          decelerationRate="fast"
-          disableIntervalMomentum
-          contentContainerStyle={styles.dealList}
-          ItemSeparatorComponent={() => <View style={{width: SLIDE_GAP}} />}
-          onMomentumScrollEnd={onDealScrollEnd}
-        />
-
-        <View style={styles.dots}>
-          {deals.map((item, index) => (
-            <View
-              key={item.id}
-              style={[styles.dot, index === activeDeal && styles.dotActive]}
-            />
-          ))}
-        </View>
-
-        {/* BULK ENQUIRY */}
-        <View style={styles.bulkBanner}>
-          <View style={styles.bulkContent}>
-            <Text style={styles.bulkTitle}>Buying in bulk?</Text>
-            <Text style={styles.bulkText}>
-              For shops, retailers and business orders.
+            <Text style={styles.sectionHint}>
+              {filteredFruits.length} products
             </Text>
           </View>
 
-          <TouchableOpacity
-            style={styles.bulkButton}
-            activeOpacity={0.85}
-            onPress={() =>
-              Alert.alert('Bulk Enquiry', 'Our team will contact you soon.')
-            }>
-            <Text style={styles.bulkButtonText}>Add Enquiry →</Text>
-          </TouchableOpacity>
-        </View>
+          {filteredFruits.length === 0 ? (
+            <Text style={styles.emptyText}>
+              No fruits found.
+            </Text>
+          ) : (
+            <View style={styles.productGrid}>
+              {filteredFruits.map(fruit => {
+                const off = discountPercent(fruit);
 
-        {/* PRODUCTS */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            {selectedCategory === 'All' ? 'All Fruits' : selectedCategory}
-          </Text>
-          <Text style={styles.sectionHint}>
-            {filteredFruits.length} products
-          </Text>
-        </View>
+                return (
+                  <View
+                    key={fruit.id}
+                    style={styles.productCard}>
 
-        {filteredFruits.length === 0 ? (
-          <Text style={styles.emptyText}>No fruits found.</Text>
-        ) : (
-          <View style={styles.productGrid}>
-            {filteredFruits.map(fruit => {
-              const off = discountPercent(fruit);
-              return (
-                <View key={fruit.id} style={styles.productCard}>
-                  <View style={styles.productImage}>
-                    {off > 0 && (
-                      <View style={styles.offBadge}>
-                        <Text style={styles.offBadgeText}>{off}% OFF</Text>
-                      </View>
-                    )}
-                    <Text style={styles.fruitEmoji}>{fruit.emoji}</Text>
-                  </View>
-
-                  <Text style={styles.productUnit}>{fruit.unit}</Text>
-                  <Text style={styles.productName} numberOfLines={1}>
-                    {fruit.name}
-                  </Text>
-                  <Text style={styles.productDescription} numberOfLines={1}>
-                    {fruit.description}
-                  </Text>
-
-                  <View style={styles.productBottom}>
-                    <View>
-                      <Text style={styles.price}>₹{fruit.price}</Text>
+                    <View style={styles.productImage}>
                       {off > 0 && (
-                        <Text style={styles.mrp}>₹{fruit.mrp}</Text>
+                        <View style={styles.offBadge}>
+                          <Text style={styles.offBadgeText}>
+                            {off}% OFF
+                          </Text>
+                        </View>
                       )}
+
+                      <Text style={styles.fruitEmoji}>
+                        {fruit.emoji}
+                      </Text>
                     </View>
 
-                    <AddControl
-                      qty={cart[fruit.id] || 0}
-                      onAdd={() => addToCart(fruit.id)}
-                      onRemove={() => removeFromCart(fruit.id)}
-                      color={colors.primary}
-                    />
+                    <Text style={styles.productUnit}>
+                      {fruit.unit}
+                    </Text>
+
+                    <Text
+                      style={styles.productName}
+                      numberOfLines={1}>
+                      {fruit.name}
+                    </Text>
+
+                    <Text
+                      style={styles.productDescription}
+                      numberOfLines={1}>
+                      {fruit.description}
+                    </Text>
+
+                    <View style={styles.productBottom}>
+                      <View>
+                        <Text style={styles.price}>
+                          ₹{fruit.price}
+                        </Text>
+
+                        {off > 0 && (
+                          <Text style={styles.mrp}>
+                            ₹{fruit.mrp}
+                          </Text>
+                        )}
+                      </View>
+
+                      <AddControl
+                        qty={cart[fruit.id] || 0}
+                        onAdd={() => addToCart(fruit.id)}
+                        onRemove={() => removeFromCart(fruit.id)}
+                        color={colors.primary}
+                      />
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
+                );
+              })}
+            </View>
+          )}
 
-        {/* FOOTER */}
-        <View style={styles.footer}>
-          <Text style={styles.footerTitle}>DKD Fruits & Vegetables</Text>
-          <Text style={styles.footerText}>
-            Trusted Since 1938 | Import | Export
-          </Text>
-        </View>
-      </ScrollView>
-
-      {/* FLOATING CART BAR */}
-      {cartCount > 0 && (
-        <TouchableOpacity
-          style={styles.cartBar}
-          activeOpacity={0.9}
-          onPress={() =>
-            Alert.alert('My Cart', `${cartCount} items • ₹${cartTotal}`)
-          }>
-          <View>
-            <Text style={styles.cartBarItems}>
-              {cartCount} {cartCount === 1 ? 'item' : 'items'}
+          {/* FOOTER */}
+          <View style={styles.footer}>
+            <Text style={styles.footerTitle}>
+              DKD Fruits & Vegetables
             </Text>
-            <Text style={styles.cartBarTotal}>₹{cartTotal}</Text>
+
+            <Text style={styles.footerText}>
+              Trusted Since 1938 | Import | Export
+            </Text>
           </View>
-          <Text style={styles.cartBarAction}>View Cart  ›</Text>
-        </TouchableOpacity>
-      )}
-    </View>
+        </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 };
 
-/* ---------- STYLES ---------- */
+/* ---------------- STYLES ---------------- */
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.primary,
+  },
+
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -552,115 +648,81 @@ const styles = StyleSheet.create({
   /* HEADER */
   header: {
     backgroundColor: colors.primary,
-    paddingTop: Platform.OS === 'ios' ? 60 : 44,
     paddingHorizontal: 20,
-    paddingBottom: 20,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
+    paddingBottom: 18,
   },
 
-  headerTop: {
+  deliveryTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
-  headerText: {
+  deliveryTextBlock: {
     flex: 1,
     paddingRight: 12,
   },
 
-  hello: {
-    fontSize: 20,
-    fontWeight: '800',
+  deliveryEyebrow: {
     color: colors.white,
-  },
-
-  headerSubRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-
-  headerSub: {
-    fontSize: 12,
-    color: colors.white,
-    opacity: 0.85,
-  },
-
-  modeBadge: {
-    marginLeft: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-
-  modeText: {
-    color: colors.white,
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 0.5,
   },
 
-  cartButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
+  deliveryTime: {
+    color: colors.white,
+    fontSize: 25,
+    fontWeight: '900',
+    marginTop: 3,
   },
 
-  cartIcon: {
-    fontSize: 21,
+  deliveryAddress: {
+    color: colors.white,
+    fontSize: 13,
+    marginTop: 5,
   },
 
-  cartBadge: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 5,
-    backgroundColor: '#F5D66D',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  cartBadgeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.black,
-  },
-
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 12,
+  profileButton: {
+    width: 48,
     height: 48,
-    paddingHorizontal: 14,
-    marginTop: 18,
+    borderRadius: 24,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  searchIcon: {
-    fontSize: 16,
+  profileIcon: {
+    fontSize: 23,
   },
 
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    color: colors.text,
-    fontSize: 14,
-  },
+  /* SEARCH */
+searchContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  backgroundColor: '#FFFFFF',
+  borderRadius: 15,
+  paddingHorizontal: 15,
+  height: 55,
+  borderWidth: 1,
+  borderColor: '#EEEEEE',
+},
 
-  clearText: {
-    color: colors.gray,
-    fontSize: 14,
-    paddingLeft: 8,
-  },
+searchInput: {
+  flex: 1,
+  fontSize: 15,
+  color: '#222222',
+  marginLeft: 10,
+},
+
+micButton: {
+  width: 42,
+  height: 42,
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderLeftWidth: 1,
+  borderLeftColor: '#EEEEEE',
+  marginLeft: 8,
+},
 
   /* SECTION HEADERS */
   sectionHeader: {
@@ -682,6 +744,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
+  },
+
+  sectionSub: {
+    color: colors.gray,
+    fontSize: 12,
+    marginTop: 3,
   },
 
   /* CATEGORIES */
@@ -727,7 +795,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  /* DEALS SLIDER */
+  /* DEALS */
   dealList: {
     paddingHorizontal: 20,
   },
@@ -802,12 +870,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
 
-  sectionSub: {
-    color: colors.gray,
-    fontSize: 12,
-    marginTop: 3,
-  },
-
   liveBadge: {
     backgroundColor: '#FEE4E2',
     paddingHorizontal: 9,
@@ -820,6 +882,25 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+
+  dots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.border,
+    marginHorizontal: 3,
+  },
+
+  dotActive: {
+    width: 18,
+    backgroundColor: colors.primary,
   },
 
   /* BULK ENQUIRY */
@@ -863,26 +944,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 
-  dots: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
-    marginHorizontal: 3,
-  },
-
-  dotActive: {
-    width: 18,
-    backgroundColor: colors.primary,
-  },
-
-  /* ADD / STEPPER */
+  /* ADD BUTTON */
   addButton: {
     minWidth: 76,
     height: 34,
@@ -1037,45 +1099,6 @@ const styles = StyleSheet.create({
     color: colors.gray,
     fontSize: 11,
     marginTop: 6,
-  },
-
-  /* FLOATING CART BAR */
-  cartBar: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 20,
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-  },
-
-  cartBarItems: {
-    color: colors.white,
-    opacity: 0.85,
-    fontSize: 11,
-    fontWeight: '600',
-  },
-
-  cartBarTotal: {
-    color: colors.white,
-    fontSize: 17,
-    fontWeight: '900',
-  },
-
-  cartBarAction: {
-    color: colors.white,
-    fontSize: 15,
-    fontWeight: '800',
   },
 });
 

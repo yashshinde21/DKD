@@ -24,9 +24,9 @@ const LoginScreen = ({navigation}) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const isValidEmail = email => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  };
+const isValidEmail = email => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+};
 
   const handleContinue = async () => {
     setError('');

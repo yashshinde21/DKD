@@ -15,6 +15,14 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));
 
+// Temporary API request logging
+app.use((req, res, next) => {
+  console.log(
+    `[API REQUEST] ${req.method} ${req.path} - ${new Date().toISOString()}`
+  );
+  next();
+});
+
 app.get('/', (req, res) => {
   res.json({
     success: true,

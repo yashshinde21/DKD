@@ -1,6 +1,6 @@
 
 import jwt from 'jsonwebtoken';
-
+import {db} from '../config/firebaseAdmin.js';
 import {generateOTP, hashOTP, verifyOTP} from '../utils/otp.js';
 import {sendOTPEmail} from '../config/email.js';
 import {db} from '../config/firebaseAdmin.js';
@@ -126,16 +126,21 @@ export const verifyEmailOTP = async (req, res) => {
       });
     }
 
+
     // OTP is valid; remove it so it cannot be reused.
     otpStore.delete(email);
 
-    // Check whether this customer already has a Firestore profile.
+    // Check whether customer already exists in Firestore
     const customerRef = db.collection('customers').doc(email);
     const customerSnapshot = await customerRef.get();
 
-    const customerExists = customerSnapshot.exists;
-    const customer = customerExists ? customerSnapshot.data() : null;
+    const isProfileComplete = customerSnapshot.exists;
 
+    const profile = isProfileComplete
+      ? customerSnapshot.data()
+      : null;
+
+    // Generate login token
     const token = jwt.sign(
       {email},
       process.env.JWT_SECRET,
@@ -148,10 +153,11 @@ export const verifyEmailOTP = async (req, res) => {
       token,
       user: {
         email,
-        isProfileComplete: customerExists,
-        ...(customerExists ? {profile: customer} : {}),
+        isProfileComplete,
+        profile,
       },
     });
+
   } catch (error) {
     console.error('Verify OTP error:', error);
 

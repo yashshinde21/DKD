@@ -1,6 +1,6 @@
 
 import jwt from 'jsonwebtoken';
-import {db} from '../config/firebaseAdmin.js';
+
 import {generateOTP, hashOTP, verifyOTP} from '../utils/otp.js';
 import {sendOTPEmail} from '../config/email.js';
 import {db} from '../config/firebaseAdmin.js';

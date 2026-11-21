@@ -1,5 +1,6 @@
 
 import React, {useEffect, useState} from 'react';
+
 import {
   View,
   Text,
@@ -18,20 +19,21 @@ import {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import API from '../data/api';
-
 import Geolocation from 'react-native-geolocation-service';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import colors from '../theme/colors';
 
 const RegisterScreen = ({navigation, route}) => {
-  const mode = route?.params?.mode || 'Retail';
   const email = route?.params?.email || '';
   const token = route?.params?.token || '';
+
   const [isSaving, setIsSaving] = useState(false);
 
-  // Check whether the selected account is Bulk or Wholesale.
-  const isBulk =
-    String(mode).toLowerCase() === 'bulk' ||
-    String(mode).toLowerCase() === 'wholesale';
+  // Account type dropdown
+  const [mode, setMode] = useState('');
+  const [dropdownVisible, setDropdownVisible] = useState(false);
+
+  const isBulk = mode === 'Wholesale';
 
   // Customer details
   const [name, setName] = useState('');
@@ -59,6 +61,10 @@ const RegisterScreen = ({navigation, route}) => {
     return () => subscription.remove();
   }, []);
 
+  // ---------------------------------------------
+  // LOCATION PERMISSION
+  // ---------------------------------------------
+
   const requestPermission = async () => {
     if (Platform.OS !== 'android') {
       return true;
@@ -71,7 +77,10 @@ const RegisterScreen = ({navigation, route}) => {
     return result === PermissionsAndroid.RESULTS.GRANTED;
   };
 
-  // Get current GPS location and convert it into an address.
+  // ---------------------------------------------
+  // GET CURRENT LOCATION
+  // ---------------------------------------------
+
   const getCurrentLocation = async () => {
     if (isLocating) {
       return;
@@ -87,6 +96,7 @@ const RegisterScreen = ({navigation, route}) => {
           'Permission Required',
           'Please allow location access to detect your address.',
         );
+
         setIsLocating(false);
         return;
       }
@@ -154,6 +164,10 @@ const RegisterScreen = ({navigation, route}) => {
     }
   };
 
+  // ---------------------------------------------
+  // UPDATE INPUT FIELDS
+  // ---------------------------------------------
+
   const updateField = (key, value, setter) => {
     setter(value);
 
@@ -163,7 +177,10 @@ const RegisterScreen = ({navigation, route}) => {
     }));
   };
 
-  // Reusable input component with automatic scrolling.
+  // ---------------------------------------------
+  // REUSABLE INPUT COMPONENT
+  // ---------------------------------------------
+
   const input = (
     label,
     value,
@@ -176,11 +193,16 @@ const RegisterScreen = ({navigation, route}) => {
       <Text style={styles.label}>{label}</Text>
 
       <TextInput
-        style={[styles.input, errors[key] && styles.inputError]}
+        style={[
+          styles.input,
+          errors[key] && styles.inputError,
+        ]}
         placeholder={placeholder}
         placeholderTextColor={colors.gray}
         value={value}
-        onChangeText={text => updateField(key, text, setter)}
+        onChangeText={text =>
+          updateField(key, text, setter)
+        }
         keyboardType={options.keyboardType || 'default'}
         autoCapitalize={options.autoCapitalize || 'words'}
         maxLength={options.maxLength}
@@ -188,139 +210,177 @@ const RegisterScreen = ({navigation, route}) => {
       />
 
       {!!errors[key] && (
-        <Text style={styles.errorText}>{errors[key]}</Text>
+        <Text style={styles.errorText}>
+          {errors[key]}
+        </Text>
       )}
     </View>
   );
 
-  // Validate and register customer.
+  // ---------------------------------------------
+  // ACCOUNT TYPE SELECTION
+  // ---------------------------------------------
 
-const handleRegister = async () => {
-  const newErrors = {};
+  const selectMode = selectedMode => {
+    setMode(selectedMode);
+    setDropdownVisible(false);
 
-  if (!name.trim()) {
-    newErrors.name = 'Please enter your full name.';
-  }
+    setErrors(previous => ({
+      ...previous,
+      mode: '',
+    }));
 
-  if (!/^[6-9]\d{9}$/.test(phone.trim())) {
-    newErrors.phone = 'Enter a valid 10-digit mobile number.';
-  }
+    if (selectedMode === 'Retail') {
+      setBusinessName('');
+      setBusinessType('');
 
-  if (isBulk && !businessName.trim()) {
-    newErrors.businessName = 'Please enter your business name.';
-  }
+      setErrors(previous => ({
+        ...previous,
+        businessName: '',
+        businessType: '',
+      }));
+    }
+  };
 
-  if (isBulk && !businessType.trim()) {
-    newErrors.businessType = 'Please enter your business type.';
-  }
+  // ---------------------------------------------
+  // REGISTER CUSTOMER
+  // ---------------------------------------------
 
-  if (!house.trim()) {
-    newErrors.house = 'Enter your house or flat number.';
-  }
+  const handleRegister = async () => {
+    const newErrors = {};
 
-  if (!address.trim()) {
-    newErrors.address = 'Please enter your delivery address.';
-  }
+    if (!mode) {
+      newErrors.mode = 'Please select your account type.';
+    }
 
-  setErrors(newErrors);
+    if (!name.trim()) {
+      newErrors.name = 'Please enter your full name.';
+    }
 
-  if (Object.keys(newErrors).length > 0) {
-    return;
-  }
+    if (!/^[6-9]\d{9}$/.test(phone.trim())) {
+      newErrors.phone = 'Enter a valid 10-digit mobile number.';
+    }
 
-  if (!email || !token) {
-    Alert.alert(
-      'Session Error',
-      'Your login session is missing. Please verify your email again.',
-    );
-    return;
-  }
+    if (isBulk && !businessName.trim()) {
+      newErrors.businessName = 'Please enter your business name.';
+    }
 
-  if (isSaving) {
-    return;
-  }
+    if (isBulk && !businessType.trim()) {
+      newErrors.businessType = 'Please enter your business type.';
+    }
 
-  setIsSaving(true);
+    if (!house.trim()) {
+      newErrors.house = 'Enter your house or flat number.';
+    }
 
-  try {
-    const profile = {
-      name: name.trim(),
-      phone: phone.trim(),
+    if (!address.trim()) {
+      newErrors.address = 'Please enter your delivery address.';
+    }
 
-      // Backend accepts only retail or wholesale.
-      mode: isBulk ? 'wholesale' : 'retail',
+    setErrors(newErrors);
 
-      ...(isBulk && {
-        businessName: businessName.trim(),
-        businessType: businessType.trim(),
-      }),
+    if (Object.keys(newErrors).length > 0) {
+      return;
+    }
 
-      address: {
-        house: house.trim(),
-        fullAddress: address.trim(),
-        location: location || null,
-      },
-    };
+    if (!email || !token) {
+      Alert.alert(
+        'Session Error',
+        'Your login session is missing. Please verify your email again.',
+      );
+      return;
+    }
 
-    const response = await API.post(
-      '/auth/customer/profile',
-      profile,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    );
+    if (isSaving) {
+      return;
+    }
 
-    if (response.data.success) {
+    setIsSaving(true);
 
-      await AsyncStorage.setItem(
-        'dkd_user',
-        JSON.stringify({
-          email,
-          isProfileComplete: true,
-          profile: response.data.user,
+    try {
+      const profile = {
+        name: name.trim(),
+        phone: phone.trim(),
+
+        // Backend accepts only retail or wholesale.
+        mode: isBulk ? 'wholesale' : 'retail',
+
+        ...(isBulk && {
+          businessName: businessName.trim(),
+          businessType: businessType.trim(),
         }),
+
+        address: {
+          house: house.trim(),
+          fullAddress: address.trim(),
+          location: location || null,
+        },
+      };
+
+      const response = await API.post(
+        '/auth/customer/profile',
+        profile,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
       );
 
-      await AsyncStorage.setItem(
-        'dkd_mode',
-        response.data.user.mode || profile.mode,
+      if (response.data.success) {
+        const savedProfile = response.data.user;
+
+        await AsyncStorage.setItem(
+          'dkd_user',
+          JSON.stringify({
+            email,
+            isProfileComplete: true,
+            profile: savedProfile,
+          }),
+        );
+
+        await AsyncStorage.setItem(
+          'dkd_mode',
+          savedProfile.mode || profile.mode,
+        );
+
+        Alert.alert(
+          'Profile Saved',
+          'Your details have been saved successfully.',
+          [
+            {
+              text: 'Continue',
+              onPress: () => {
+                navigation.replace('Home', {
+                  name: savedProfile.name,
+                  email,
+                  mode: savedProfile.mode || profile.mode,
+                  profile: savedProfile,
+                });
+              },
+            },
+          ],
+        );
+      }
+    } catch (error) {
+      console.log(
+        'CUSTOMER PROFILE SAVE ERROR:',
+        error.response?.data || error.message,
       );
 
       Alert.alert(
-        'Profile Saved',
-        'Your details have been saved successfully.',
-        [
-          {
-            text: 'Continue',
-            onPress: () => {
-              navigation.replace('Home', {
-                name: profile.name,
-                mode: profile.mode,
-                profile: response.data.user,
-              });
-            },
-          },
-        ],
+        'Registration Failed',
+        error.response?.data?.message ||
+          'Unable to save your profile. Please try again.',
       );
+    } finally {
+      setIsSaving(false);
     }
-  } catch (error) {
-    console.log(
-      'CUSTOMER PROFILE SAVE ERROR:',
-      error.response?.data || error.message,
-    );
+  };
 
-    Alert.alert(
-      'Registration Failed',
-      error.response?.data?.message ||
-        'Unable to save your profile. Please try again.',
-    );
-  } finally {
-    setIsSaving(false);
-  }
-};
-
+  // ---------------------------------------------
+  // MAIN UI
+  // ---------------------------------------------
 
   return (
     <KeyboardAvoidingView
@@ -362,6 +422,127 @@ const handleRegister = async () => {
             Just a few details to get started.
           </Text>
 
+          {/* ACCOUNT TYPE DROPDOWN */}
+
+          <View style={styles.field}>
+            <Text style={styles.label}>
+              Account Type
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.dropdownButton,
+                errors.mode && styles.inputError,
+              ]}
+              onPress={() =>
+                setDropdownVisible(!dropdownVisible)
+              }
+              activeOpacity={0.8}>
+
+              <View style={styles.dropdownLeft}>
+                <MaterialCommunityIcons
+                  name="account-group-outline"
+                  size={22}
+                  color={mode ? colors.primary : colors.gray}
+                />
+
+                <Text
+                  style={[
+                    styles.dropdownText,
+                    !mode && styles.dropdownPlaceholder,
+                  ]}>
+                  {mode || 'Select Retail or Wholesale'}
+                </Text>
+              </View>
+
+              <MaterialCommunityIcons
+                name={
+                  dropdownVisible
+                    ? 'chevron-up'
+                    : 'chevron-down'
+                }
+                size={24}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+
+            {dropdownVisible && (
+              <View style={styles.dropdownMenu}>
+                <TouchableOpacity
+                  style={styles.dropdownOption}
+                  onPress={() => selectMode('Retail')}
+                  activeOpacity={0.8}>
+
+                  <View style={styles.optionIcon}>
+                    <MaterialCommunityIcons
+                      name="cart-outline"
+                      size={23}
+                      color={colors.primary}
+                    />
+                  </View>
+
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionTitle}>
+                      Retail
+                    </Text>
+                    <Text style={styles.optionSubtitle}>
+                      For individual customers
+                    </Text>
+                  </View>
+
+                  {mode === 'Retail' && (
+                    <MaterialCommunityIcons
+                      name="check-circle"
+                      size={22}
+                      color={colors.primary}
+                    />
+                  )}
+                </TouchableOpacity>
+
+                <View style={styles.optionDivider} />
+
+                <TouchableOpacity
+                  style={styles.dropdownOption}
+                  onPress={() => selectMode('Wholesale')}
+                  activeOpacity={0.8}>
+
+                  <View style={styles.optionIcon}>
+                    <MaterialCommunityIcons
+                      name="store-outline"
+                      size={23}
+                      color={colors.primary}
+                    />
+                  </View>
+
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionTitle}>
+                      Wholesale
+                    </Text>
+                    <Text style={styles.optionSubtitle}>
+                      For shops, hotels and businesses
+                    </Text>
+                  </View>
+
+                  {mode === 'Wholesale' && (
+                    <MaterialCommunityIcons
+                      name="check-circle"
+                      size={22}
+                      color={colors.primary}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!!errors.mode && (
+              <Text style={styles.errorText}>
+                {errors.mode}
+              </Text>
+            )}
+          </View>
+
+          {/* PERSONAL DETAILS */}
+
           {input(
             'Full Name',
             name,
@@ -383,7 +564,7 @@ const handleRegister = async () => {
             },
           )}
 
-          {/* BUSINESS DETAILS - BULK CUSTOMERS ONLY */}
+          {/* BUSINESS DETAILS - WHOLESALE ONLY */}
 
           {isBulk && (
             <>
@@ -393,7 +574,7 @@ const handleRegister = async () => {
                 </Text>
 
                 <Text style={styles.optional}>
-                  Required for Bulk Account
+                  Required for Wholesale Account
                 </Text>
               </View>
 
@@ -422,9 +603,11 @@ const handleRegister = async () => {
               Delivery Address
             </Text>
 
-            <Text style={styles.optional}>
-              {mode} Account
-            </Text>
+            {mode ? (
+              <Text style={styles.optional}>
+                {mode} Account
+              </Text>
+            ) : null}
           </View>
 
           {input(
@@ -446,9 +629,17 @@ const handleRegister = async () => {
             {isLocating ? (
               <ActivityIndicator color={colors.white} />
             ) : (
-              <Text style={styles.locationText}>
-                ◎  Use My Current Location
-              </Text>
+              <View style={styles.locationRow}>
+                <MaterialCommunityIcons
+                  name="crosshairs-gps"
+                  size={20}
+                  color={colors.white}
+                />
+
+                <Text style={styles.locationText}>
+                  Use My Current Location
+                </Text>
+              </View>
             )}
           </TouchableOpacity>
 
@@ -482,20 +673,24 @@ const handleRegister = async () => {
           </View>
 
           {/* SAVE */}
-          
-            <TouchableOpacity
-              style={styles.submitButton}
-              onPress={handleRegister}
-              disabled={isSaving}
-              activeOpacity={0.85}>
-              {isSaving ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.submitText}>
-                  Save & Continue
-                </Text>
-              )}
-            </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.submitButton,
+              isSaving && styles.disabledButton,
+            ]}
+            onPress={handleRegister}
+            disabled={isSaving}
+            activeOpacity={0.85}>
+
+            {isSaving ? (
+              <ActivityIndicator color={colors.white} />
+            ) : (
+              <Text style={styles.submitText}>
+                Save & Continue
+              </Text>
+            )}
+          </TouchableOpacity>
 
           <Text style={styles.footer}>
             © DKD Fruits & Vegetables Pvt. Ltd.
@@ -505,6 +700,10 @@ const handleRegister = async () => {
     </KeyboardAvoidingView>
   );
 };
+
+// ---------------------------------------------
+// STYLES
+// ---------------------------------------------
 
 const styles = StyleSheet.create({
   container: {
@@ -606,6 +805,93 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
 
+  // ACCOUNT TYPE DROPDOWN
+
+  dropdownButton: {
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  dropdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 11,
+  },
+
+  dropdownText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  dropdownPlaceholder: {
+    color: colors.gray,
+    fontWeight: '400',
+  },
+
+  dropdownMenu: {
+    marginTop: 8,
+    backgroundColor: colors.white,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000000',
+    shadowOpacity: 0.08,
+    shadowRadius: 7,
+    shadowOffset: {width: 0, height: 3},
+  },
+
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 13,
+    paddingVertical: 14,
+  },
+
+  optionIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#EAF6ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  optionContent: {
+    flex: 1,
+  },
+
+  optionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: colors.text,
+  },
+
+  optionSubtitle: {
+    fontSize: 11,
+    color: colors.gray,
+    marginTop: 4,
+  },
+
+  optionDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginHorizontal: 13,
+  },
+
+  // ADDRESS
+
   addressHeader: {
     marginTop: 25,
   },
@@ -631,11 +917,19 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
 
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+
   locationText: {
     color: colors.white,
     fontWeight: '700',
     fontSize: 14,
   },
+
+  // SUBMIT
 
   submitButton: {
     height: 54,
@@ -644,6 +938,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 28,
+  },
+
+  disabledButton: {
+    opacity: 0.7,
   },
 
   submitText: {

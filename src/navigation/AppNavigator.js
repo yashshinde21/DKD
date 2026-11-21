@@ -1,4 +1,3 @@
-
 import React, {useEffect, useState} from 'react';
 import {
   ActivityIndicator,
@@ -19,7 +18,9 @@ import LoginScreen from '../screens/LoginScreen';
 import OTPScreen from '../screens/OTPScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import HomeScreen from '../screens/HomeScreen';
+import SearchScreen from '../screens/SearchScreen';
 
+import {useCart} from '../context/CartContext';
 import API from '../data/api';
 import colors from '../theme/colors';
 
@@ -41,12 +42,16 @@ const ComingSoonScreen = ({route}) => (
 
 // Main bottom navigation.
 const MainTabs = ({route}) => {
-const icons = {
-  HomeTab: 'home-variant',
-  OrderAgain: 'history',
-  Cart: 'shopping-outline',
-  Profile: 'account-circle-outline',
-};
+  // Cart count comes from the shared cart (provided in App.js).
+  const {cartCount} = useCart();
+
+  const icons = {
+    HomeTab: 'home-variant',
+    OrderAgain: 'history',
+    Cart: 'shopping-outline',
+    Profile: 'account-circle-outline',
+  };
+
   return (
     <Tab.Navigator
       screenOptions={({route: tabRoute}) => ({
@@ -79,14 +84,14 @@ const icons = {
         ),
       })}>
 
-     <Tab.Screen
-          name="HomeTab"
-          component={HomeScreen}
-          initialParams={route.params || {}}
-          options={{
-            tabBarLabel: 'Home',
-          }}
-     />
+      <Tab.Screen
+        name="HomeTab"
+        component={HomeScreen}
+        initialParams={route.params || {}}
+        options={{
+          tabBarLabel: 'Home',
+        }}
+      />
 
       <Tab.Screen
         name="OrderAgain"
@@ -97,6 +102,15 @@ const icons = {
       <Tab.Screen
         name="Cart"
         component={ComingSoonScreen}
+        options={{
+          tabBarBadge: cartCount > 0 ? cartCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: colors.primary,
+            color: '#FFFFFF',
+            fontSize: 10,
+            fontWeight: '800',
+          },
+        }}
       />
 
       <Tab.Screen
@@ -191,6 +205,12 @@ const AppNavigator = () => {
 
         // Profile not found.
         if (status === 404) {
+          const token = await AsyncStorage.getItem('dkd_token');
+          const savedUserString = await AsyncStorage.getItem('dkd_user');
+          const savedUser = savedUserString
+            ? JSON.parse(savedUserString)
+            : null;
+
           setInitialParams({
             email: savedUser?.email || '',
             mode: savedUser?.profile?.mode || 'Retail',
@@ -203,12 +223,15 @@ const AppNavigator = () => {
         }
 
         // Network/server issue: use cached profile.
-        if (savedUser?.profile) {
+        const cachedString = await AsyncStorage.getItem('dkd_user');
+        const cachedUser = cachedString ? JSON.parse(cachedString) : null;
+
+        if (cachedUser?.profile) {
           setInitialParams({
-            name: savedUser.profile.name,
-            email: savedUser.email,
-            mode: savedUser.profile.mode || 'Retail',
-            profile: savedUser.profile,
+            name: cachedUser.profile.name,
+            email: cachedUser.email,
+            mode: cachedUser.profile.mode || 'Retail',
+            profile: cachedUser.profile,
           });
 
           setInitialRoute('Home');
@@ -288,6 +311,16 @@ const AppNavigator = () => {
             options={{
               headerShown: false,
               gestureEnabled: false,
+            }}
+          />
+
+          {/* Full-screen search page (opens above the tab bar) */}
+          <Stack.Screen
+            name="Search"
+            component={SearchScreen}
+            options={{
+              headerShown: false,
+              animation: 'fade',
             }}
           />
 

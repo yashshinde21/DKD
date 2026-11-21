@@ -1,4 +1,3 @@
-
 import React, {useEffect, useState} from 'react';
 import {
   View,
@@ -9,6 +8,7 @@ import {
 
 import {getApp} from '@react-native-firebase/app';
 import AppNavigator from './src/navigation/AppNavigator';
+import {CartProvider} from './src/context/CartContext';
 
 const App = () => {
   const [showSplash, setShowSplash] = useState(true);
@@ -44,14 +44,14 @@ const App = () => {
   }
 
   return (
-    <>
+    <CartProvider>
       <StatusBar
         hidden={false}
         barStyle="dark-content"
         backgroundColor="#FFFFFF"
       />
       <AppNavigator />
-    </>
+    </CartProvider>
   );
 };
 

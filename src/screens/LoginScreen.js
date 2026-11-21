@@ -1,5 +1,6 @@
 
 import React, {useState} from 'react';
+
 import {
   View,
   Text,
@@ -19,24 +20,25 @@ import API from '../data/api';
 
 const LoginScreen = ({navigation}) => {
   const [email, setEmail] = useState('');
-  const [mode, setMode] = useState('Retail');
   const [focused, setFocused] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-const isValidEmail = email => {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-};
+  const isValidEmail = value => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  };
 
   const handleContinue = async () => {
     setError('');
 
-    if (!email.trim()) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
       setError('Please enter your email address.');
       return;
     }
 
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(normalizedEmail)) {
       setError('Please enter a valid email address.');
       return;
     }
@@ -45,10 +47,10 @@ const isValidEmail = email => {
       setLoading(true);
 
       const response = await API.post('/auth/send-otp', {
-        email: email.trim().toLowerCase(),
+        email: normalizedEmail,
       });
 
-      if (response.data.success) {
+      if (response.data?.success) {
         Alert.alert(
           'OTP Sent',
           'A verification code has been sent to your email.',
@@ -57,15 +59,16 @@ const isValidEmail = email => {
               text: 'Continue',
               onPress: () => {
                 navigation.navigate('OTP', {
-                  email: email.trim().toLowerCase(),
-                  mode,
+                  email: normalizedEmail,
                 });
               },
             },
           ],
         );
       } else {
-        setError(response.data.message || 'Unable to send OTP.');
+        setError(
+          response.data?.message || 'Unable to send OTP.',
+        );
       }
     } catch (err) {
       console.log(
@@ -121,37 +124,6 @@ const isValidEmail = email => {
             Enter your email address to continue
           </Text>
 
-          {/* ACCOUNT TYPE */}
-          <Text style={styles.label}>
-            Account type
-          </Text>
-
-          <View style={styles.segment}>
-            {['Retail', 'Wholesale'].map(item => {
-              const active = mode === item;
-
-              return (
-                <TouchableOpacity
-                  key={item}
-                  style={[
-                    styles.segmentItem,
-                    active && styles.segmentActive,
-                  ]}
-                  onPress={() => setMode(item)}
-                  activeOpacity={0.85}>
-
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      active && styles.segmentTextActive,
-                    ]}>
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
           {/* EMAIL */}
           <Text style={styles.label}>
             Email address
@@ -177,6 +149,7 @@ const isValidEmail = email => {
               returnKeyType="done"
               onChangeText={text => {
                 setEmail(text);
+
                 if (error) {
                   setError('');
                 }
@@ -209,6 +182,7 @@ const isValidEmail = email => {
                   color={colors.white}
                   size="small"
                 />
+
                 <Text style={styles.continueText}>
                   Sending OTP...
                 </Text>
@@ -315,37 +289,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: 22,
     marginBottom: 8,
-  },
-
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: colors.background,
-    borderRadius: 12,
-    padding: 3,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-
-  segmentItem: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-
-  segmentActive: {
-    backgroundColor: colors.primary,
-  },
-
-  segmentText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: colors.gray,
-  },
-
-  segmentTextActive: {
-    color: colors.white,
-    fontWeight: '700',
   },
 
   emailContainer: {

@@ -1,0 +1,133 @@
+export const categories = [
+  {name: 'All', emoji: '🧺'},
+  {name: 'Apples', emoji: '🍎'},
+  {name: 'Oranges', emoji: '🍊'},
+  {name: 'Grapes', emoji: '🍇'},
+  {name: 'Guava', emoji: '🍐'},
+  {name: 'Strawberry', emoji: '🍓'},
+  {name: 'Kiwi', emoji: '🥝'},
+  {name: 'Sweet Lime', emoji: '🍋'},
+];
+
+export const fruits = [
+  {
+    id: '1',
+    name: 'Shimla Apples',
+    category: 'Apples',
+    price: 180,
+    mrp: 220,
+    unit: 'kg',
+    emoji: '🍎',
+    description: 'Crisp and juicy',
+    bg: '#E1F1DC',
+  },
+  {
+    id: '2',
+    name: 'Kashmiri Apples',
+    category: 'Apples',
+    price: 240,
+    mrp: 240,
+    unit: 'kg',
+    emoji: '🍎',
+    description: 'Sweet and firm',
+    bg: '#E1F1DC',
+  },
+  {
+    id: '3',
+    name: 'Nagpur Oranges',
+    category: 'Oranges',
+    price: 100,
+    mrp: 130,
+    unit: 'kg',
+    emoji: '🍊',
+    description: 'Tangy and full of juice',
+    bg: '#FFEBD2',
+  },
+  {
+    id: '4',
+    name: 'Kinnow Mandarin',
+    category: 'Oranges',
+    price: 90,
+    mrp: 90,
+    unit: 'kg',
+    emoji: '🍊',
+    description: 'Easy to peel, very juicy',
+    bg: '#FFEBD2',
+  },
+  {
+    id: '5',
+    name: 'Green Grapes',
+    category: 'Grapes',
+    price: 120,
+    mrp: 150,
+    unit: 'kg',
+    emoji: '🍇',
+    description: 'Sweet and seedless',
+    bg: '#EDE4F7',
+  },
+  {
+    id: '6',
+    name: 'Black Grapes',
+    category: 'Grapes',
+    price: 140,
+    mrp: 140,
+    unit: 'kg',
+    emoji: '🍇',
+    description: 'Rich and sweet',
+    bg: '#EDE4F7',
+  },
+  {
+    id: '7',
+    name: 'Pink Guava',
+    category: 'Guava',
+    price: 90,
+    mrp: 110,
+    unit: 'kg',
+    emoji: '🍐',
+    description: 'Fragrant and fresh',
+    bg: '#DAF1EC',
+  },
+  {
+    id: '8',
+    name: 'Strawberries',
+    category: 'Strawberry',
+    price: 220,
+    mrp: 260,
+    unit: 'box',
+    emoji: '🍓',
+    description: 'Fresh seasonal berries',
+    bg: '#FDE2DF',
+  },
+  {
+    id: '9',
+    name: 'Kiwi',
+    category: 'Kiwi',
+    price: 150,
+    mrp: 180,
+    unit: 'pack of 3',
+    emoji: '🥝',
+    description: 'Tangy and vitamin rich',
+    bg: '#E8F2D2',
+  },
+  {
+    id: '10',
+    name: 'Mosambi',
+    category: 'Sweet Lime',
+    price: 90,
+    mrp: 110,
+    unit: 'kg',
+    emoji: '🍋',
+    description: 'Fresh sweet lime',
+    bg: '#FBF0CC',
+  },
+];
+
+export const discountPercent = item =>
+  item.mrp > item.price
+    ? Math.round(((item.mrp - item.price) / item.mrp) * 100)
+    : 0;
+
+export const deals = fruits
+  .filter(item => discountPercent(item) > 0)
+  .sort((a, b) => discountPercent(b) - discountPercent(a))
+  .slice(0, 5);

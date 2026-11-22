@@ -16,6 +16,11 @@ import {
   authenticateToken,
 } from '../middleware/authMiddleware.js';
 
+import {
+  getCustomerAddresses,
+  saveCustomerAddresses,
+} from '../controllers/addressController.js';
+
 const router = express.Router();
 
 const sendOTPLimiter = rateLimit({
@@ -46,5 +51,9 @@ router.post('/verify-otp', verifyOTPLimiter, verifyEmailOTP);
 // Protected customer APIs
 router.post('/customer/profile', authenticateToken, saveCustomerProfile);
 router.get('/customer/me', authenticateToken, getMyProfile);
+
+// Protected customer address APIs
+router.get('/customer/addresses', authenticateToken, getCustomerAddresses);
+router.put('/customer/addresses', authenticateToken, saveCustomerAddresses);
 
 export default router;

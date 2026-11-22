@@ -14,6 +14,7 @@ import {
 
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
+import {useIsFocused} from '@react-navigation/native';
 import colors from '../theme/colors';
 import AddressBottomSheet from '../components/AddressBottomSheet';
 import AddControl from '../components/AddControl';
@@ -21,7 +22,10 @@ import CartBar from '../components/CartBar';
 import VoiceSearchModal from '../components/VoiceSearchModal';
 import {useCart} from '../context/CartContext';
 import {categories, fruits, deals, discountPercent} from '../data/fruits';
-import {loadAddressState} from '../utils/addressHelpers';
+import {
+  loadAddressState,
+  syncAddressStateWithServer,
+} from '../utils/addressHelpers';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SLIDE_GAP = 12;
@@ -46,6 +50,9 @@ const HomeScreen = ({navigation, route}) => {
   // status bar and scrolls away with the content.
   const insets = useSafeAreaInsets();
   const [scrolled, setScrolled] = useState(false);
+
+  // Only the focused tab controls the status bar (Profile does the same).
+  const isFocused = useIsFocused();
 
   const onScroll = event => {
     const isScrolled = event.nativeEvent.contentOffset.y > 120;
@@ -76,11 +83,20 @@ const HomeScreen = ({navigation, route}) => {
 
     const refreshAddresses = async () => {
       try {
+        // 1. Show what is on the phone straight away.
         const state = await loadAddressState();
 
         if (active) {
           setAddresses(state.addresses);
           setSelectedAddressId(state.selectedId);
+        }
+
+        // 2. Then bring in the addresses saved on the server (Firebase).
+        const synced = await syncAddressStateWithServer();
+
+        if (active && synced) {
+          setAddresses(synced.addresses);
+          setSelectedAddressId(synced.selectedId);
         }
       } catch (error) {
         console.log('Address loading error:', error);
@@ -204,11 +220,13 @@ const HomeScreen = ({navigation, route}) => {
 
   return (
     <View style={styles.safeArea}>
-      <StatusBar
-        translucent
-        backgroundColor="transparent"
-        barStyle={scrolled ? 'dark-content' : 'light-content'}
-      />
+      {isFocused && (
+        <StatusBar
+          translucent
+          backgroundColor="transparent"
+          barStyle={scrolled ? 'dark-content' : 'light-content'}
+        />
+      )}
 
       <View style={styles.container}>
         <ScrollView

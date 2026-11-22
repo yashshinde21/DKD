@@ -31,6 +31,7 @@ const VoiceSearchModal = ({visible, onClose, onResult}) => {
   const [errorText, setErrorText] = useState('');
 
   const finishedRef = useRef(false);
+  const sessionRef = useRef(0);
   const transcriptRef = useRef('');
   const onResultRef = useRef(onResult);
 
@@ -82,12 +83,16 @@ const VoiceSearchModal = ({visible, onClose, onResult}) => {
     }
 
     finishedRef.current = true;
-    Voice.stop().catch(() => {});
     onResultRef.current?.(clean);
   }, []);
 
   const startListening = useCallback(async () => {
-    finishedRef.current = false;
+    // Late events from the previous session are ignored until the
+    // recogniser has been fully reset (finishedRef stays true until then).
+    finishedRef.current = true;
+    sessionRef.current += 1;
+    const session = sessionRef.current;
+
     transcriptRef.current = '';
     setTranscript('');
     setErrorText('');
@@ -121,6 +126,16 @@ const VoiceSearchModal = ({visible, onClose, onResult}) => {
         }
       }
 
+      // Release any previous recogniser, then give it a moment to settle.
+      await Voice.destroy().catch(() => {});
+      await new Promise(resolve => setTimeout(resolve, 350));
+
+      // The sheet was closed (or restarted) while we were resetting.
+      if (session !== sessionRef.current) {
+        return;
+      }
+
+      finishedRef.current = false;
       await Voice.start(LOCALE);
     } catch (error) {
       console.log('Voice start error:', error);
@@ -182,12 +197,14 @@ const VoiceSearchModal = ({visible, onClose, onResult}) => {
       startListening();
     } else {
       finishedRef.current = true;
+      sessionRef.current += 1;
       Voice.cancel().catch(() => {});
     }
   }, [visible, startListening]);
 
   const handleClose = () => {
     finishedRef.current = true;
+    sessionRef.current += 1;
     Voice.cancel().catch(() => {});
     onClose();
   };

@@ -1,28 +1,27 @@
-
-import React, {useEffect, useState, useCallback, useRef} from 'react';
+import React, {useEffect, useState, useCallback} from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   StatusBar,
   Alert,
-  PermissionsAndroid,
   ActivityIndicator,
-  Modal,
 } from 'react-native';
 
 import {SafeAreaView} from 'react-native-safe-area-context';
+import {useIsFocused} from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
-import Geolocation from 'react-native-geolocation-service';
 
 import API from '../data/api';
 import colors from '../theme/colors';
+import AddressBottomSheet from '../components/AddressBottomSheet';
+import {
+  loadAddressState,
+  syncAddressStateWithServer,
+} from '../utils/addressHelpers';
 
 /* ---------------- HELPERS ---------------- */
 
@@ -79,28 +78,14 @@ const ProfileScreen = ({navigation}) => {
   const [error, setError] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  // Saved addresses
+  // Only the focused tab controls the status bar, so Home and Profile
+  // no longer fight over its colour.
+  const isFocused = useIsFocused();
+
+  // Saved addresses (same data and same bottom sheet as the Home page).
   const [addresses, setAddresses] = useState([]);
   const [selectedAddressId, setSelectedAddressId] = useState(null);
-
-  // Address modal
-  const [formVisible, setFormVisible] = useState(false);
-  const [editingAddressId, setEditingAddressId] = useState(null);
-
-  // Address form
-  const [addressLabel, setAddressLabel] = useState('Home');
-  const [house, setHouse] = useState('');
-  const [area, setArea] = useState('');
-  const [landmark, setLandmark] = useState('');
-  const [city, setCity] = useState('');
-  const [state, setState] = useState('');
-  const [pincode, setPincode] = useState('');
-
-  const [location, setLocation] = useState(null);
-  const [isLocating, setIsLocating] = useState(false);
-  const [errors, setErrors] = useState({});
-
-  const scrollRef = useRef(null);
+  const [addressSheetVisible, setAddressSheetVisible] = useState(false);
 
   /* ---------------- FETCH PROFILE ---------------- */
 
@@ -148,445 +133,37 @@ const ProfileScreen = ({navigation}) => {
 
   /* ---------------- LOAD ADDRESSES ---------------- */
 
-  const loadAddresses = useCallback(async () => {
+  // Same loading as Home: the phone copy first, then the server (Firebase).
+  const refreshAddresses = useCallback(async () => {
     try {
-      const [storedAddresses, storedSelectedId, storedUser] =
-        await Promise.all([
-          AsyncStorage.getItem('dkd_addresses'),
-          AsyncStorage.getItem('dkd_selected_address'),
-          AsyncStorage.getItem('dkd_user'),
-        ]);
+      const state = await loadAddressState();
 
-      let list = storedAddresses ? JSON.parse(storedAddresses) : [];
+      setAddresses(state.addresses);
+      setSelectedAddressId(state.selectedId);
 
-      if (!Array.isArray(list)) {
-        list = [];
-      }
+      const synced = await syncAddressStateWithServer();
 
-      // Import the registration address if no saved addresses exist.
-      if (list.length === 0) {
-        let oldAddress = null;
-
-        if (storedUser) {
-          const user = JSON.parse(storedUser);
-          oldAddress = user.address || user.profile?.address;
-        }
-
-        if (!oldAddress && profile?.address) {
-          oldAddress = profile.address;
-        }
-
-        if (oldAddress) {
-          const oldData =
-            typeof oldAddress === 'string'
-              ? {area: oldAddress}
-              : oldAddress;
-
-          const importedAddress = {
-            id: `address-${Date.now()}`,
-            label: 'Home',
-            house: oldData.house || '',
-            area: oldData.area || oldData.fullAddress || '',
-            landmark: oldData.landmark || '',
-            city: oldData.city || '',
-            state: oldData.state || '',
-            pincode: oldData.pincode || '',
-            location: oldData.location || null,
-          };
-
-          importedAddress.fullAddress =
-            oldData.fullAddress || createFullAddress(importedAddress);
-
-          if (importedAddress.fullAddress) {
-            list = [importedAddress];
-
-            await AsyncStorage.setItem(
-              'dkd_addresses',
-              JSON.stringify(list),
-            );
-          }
-        }
-      }
-
-      const selected =
-        list.find(item => item.id === storedSelectedId) || list[0];
-
-      setAddresses(list);
-      setSelectedAddressId(selected?.id || null);
-
-      if (selected) {
-        await AsyncStorage.setItem(
-          'dkd_selected_address',
-          selected.id,
-        );
-      } else {
-        await AsyncStorage.removeItem('dkd_selected_address');
+      if (synced) {
+        setAddresses(synced.addresses);
+        setSelectedAddressId(synced.selectedId);
       }
     } catch (err) {
       console.log('ADDRESS LOAD ERROR:', err.message);
     }
-  }, [profile]);
+  }, []);
 
   useEffect(() => {
-    if (profile) {
-      loadAddresses();
-    }
-  }, [profile, loadAddresses]);
+    const unsubscribe = navigation.addListener('focus', refreshAddresses);
 
-  /* ---------------- SAVE ADDRESS LIST ---------------- */
+    refreshAddresses();
 
-  const saveAddressList = async (updated, selectedId) => {
-    try {
-      await AsyncStorage.setItem(
-        'dkd_addresses',
-        JSON.stringify(updated),
-      );
+    return unsubscribe;
+  }, [navigation, refreshAddresses]);
 
-      if (selectedId) {
-        await AsyncStorage.setItem(
-          'dkd_selected_address',
-          selectedId,
-        );
-      } else {
-        await AsyncStorage.removeItem('dkd_selected_address');
-      }
-
-      setAddresses(updated);
-      setSelectedAddressId(selectedId || null);
-
-      return true;
-    } catch (err) {
-      console.log('ADDRESS SAVE ERROR:', err.message);
-      Alert.alert('Error', 'Unable to save address details.');
-      return false;
-    }
-  };
-
-  /* ---------------- LOCATION PERMISSION ---------------- */
-
-  const requestPermission = async () => {
-    if (Platform.OS !== 'android') {
-      return true;
-    }
-
-    const result = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-    );
-
-    return result === PermissionsAndroid.RESULTS.GRANTED;
-  };
-
-  /* ---------------- CURRENT LOCATION ---------------- */
-
-  const getCurrentLocation = async () => {
-    if (isLocating) return;
-
-    setIsLocating(true);
-
-    try {
-      const allowed = await requestPermission();
-
-      if (!allowed) {
-        Alert.alert(
-          'Permission Required',
-          'Allow location access to detect your delivery address.',
-        );
-        setIsLocating(false);
-        return;
-      }
-
-      Geolocation.getCurrentPosition(
-        async position => {
-          const {latitude, longitude} = position.coords;
-
-          setLocation({latitude, longitude});
-
-          try {
-            const response = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&addressdetails=1`,
-              {
-                headers: {
-                  Accept: 'application/json',
-                  'User-Agent': 'DKDFruitsMobilePrototype/1.0',
-                },
-              },
-            );
-
-            if (!response.ok) {
-              throw new Error('Address lookup failed');
-            }
-
-            const result = await response.json();
-            const a = result.address || {};
-
-            setArea(
-              a.neighbourhood ||
-                a.suburb ||
-                a.residential ||
-                a.road ||
-                a.village ||
-                '',
-            );
-
-            setCity(
-              a.city ||
-                a.town ||
-                a.village ||
-                a.municipality ||
-                '',
-            );
-
-            setState(a.state || '');
-            setPincode(a.postcode || '');
-
-            setErrors(previous => ({
-              ...previous,
-              area: '',
-              city: '',
-              state: '',
-              pincode: '',
-            }));
-
-            Alert.alert(
-              'Location Detected',
-              'Address detected. Please enter your house or flat number.',
-            );
-          } catch (err) {
-            Alert.alert(
-              'Address Error',
-              'GPS detected, but address lookup failed. Enter the address manually.',
-            );
-          } finally {
-            setIsLocating(false);
-          }
-        },
-        err => {
-          setIsLocating(false);
-          Alert.alert('Location Error', err.message);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 20000,
-          maximumAge: 5000,
-          showLocationDialog: true,
-        },
-      );
-    } catch (err) {
-      setIsLocating(false);
-      Alert.alert('Error', 'Unable to get your location.');
-    }
-  };
-
-  /* ---------------- FORM HELPERS ---------------- */
-
-  const updateField = (key, value, setter) => {
-    setter(value);
-
-    setErrors(previous => ({
-      ...previous,
-      [key]: '',
-    }));
-  };
-
-  const input = (
-    label,
-    value,
-    setter,
-    key,
-    placeholder,
-    options = {},
-  ) => (
-    <View style={styles.field}>
-      <Text style={styles.inputLabel}>{label}</Text>
-
-      <TextInput
-        style={[
-          styles.input,
-          errors[key] && styles.inputError,
-        ]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.gray}
-        value={value}
-        onChangeText={text => updateField(key, text, setter)}
-        keyboardType={options.keyboardType || 'default'}
-        autoCapitalize={options.autoCapitalize || 'words'}
-        maxLength={options.maxLength}
-        returnKeyType="next"
-        onFocus={() => {
-          setTimeout(() => {
-            scrollRef.current?.scrollToEnd({animated: true});
-          }, 150);
-        }}
-      />
-
-      {!!errors[key] && (
-        <Text style={styles.errorText}>{errors[key]}</Text>
-      )}
-    </View>
-  );
-
-  const resetAddressForm = () => {
-    setEditingAddressId(null);
-    setAddressLabel('Home');
-    setHouse('');
-    setArea('');
-    setLandmark('');
-    setCity('');
-    setState('');
-    setPincode('');
-    setLocation(null);
-    setErrors({});
-  };
-
-  /* ---------------- ADD ADDRESS ---------------- */
-
-  const openAddAddress = () => {
-    resetAddressForm();
-    setFormVisible(true);
-  };
-
-  /* ---------------- EDIT ADDRESS ---------------- */
-
-  const openEditAddress = item => {
-    setEditingAddressId(item.id);
-    setAddressLabel(item.label || 'Home');
-
-    setHouse(item.house || '');
-    setArea(item.area || '');
-    setLandmark(item.landmark || '');
-    setCity(item.city || '');
-    setState(item.state || '');
-    setPincode(item.pincode || '');
-    setLocation(item.location || null);
-
-    // Compatibility with older saved addresses.
-    if (
-      !item.house &&
-      !item.area &&
-      item.fullAddress
-    ) {
-      setArea(item.fullAddress);
-    }
-
-    setErrors({});
-    setFormVisible(true);
-  };
-
-  /* ---------------- VALIDATE AND SAVE ---------------- */
-
-  const handleSaveAddress = async () => {
-    const newErrors = {};
-
-    if (!house.trim()) {
-      newErrors.house = 'Enter house / flat number.';
-    }
-
-    if (!area.trim()) {
-      newErrors.area = 'Enter your area.';
-    }
-
-    if (!city.trim()) {
-      newErrors.city = 'Enter your city.';
-    }
-
-    if (!state.trim()) {
-      newErrors.state = 'Enter your state.';
-    }
-
-    if (!/^[1-9]\d{5}$/.test(pincode.trim())) {
-      newErrors.pincode = 'Enter a valid 6-digit PIN code.';
-    }
-
-    setErrors(newErrors);
-
-    if (Object.keys(newErrors).length > 0) {
-      return;
-    }
-
-    const addressData = {
-      id: editingAddressId || `address-${Date.now()}`,
-      label: addressLabel,
-      house: house.trim(),
-      area: area.trim(),
-      landmark: landmark.trim(),
-      city: city.trim(),
-      state: state.trim(),
-      pincode: pincode.trim(),
-      location,
-    };
-
-    addressData.fullAddress = createFullAddress(addressData);
-
-    let updated;
-    let selectedId = selectedAddressId;
-
-    if (editingAddressId) {
-      updated = addresses.map(item =>
-        item.id === editingAddressId ? addressData : item,
-      );
-    } else {
-      updated = [...addresses, addressData];
-      selectedId = addressData.id;
-    }
-
-    const saved = await saveAddressList(updated, selectedId);
-
-    if (!saved) return;
-
-    setFormVisible(false);
-    resetAddressForm();
-
-    Alert.alert(
-      'Success',
-      editingAddressId
-        ? 'Address updated successfully.'
-        : 'New address added successfully.',
-    );
-  };
-
-  /* ---------------- SET DEFAULT ---------------- */
-
-  const handleSelectAddress = async item => {
-    const saved = await saveAddressList(addresses, item.id);
-
-    if (saved) {
-      Alert.alert(
-        'Default Address Updated',
-        `${item.label} is now your default delivery address.`,
-      );
-    }
-  };
-
-  /* ---------------- DELETE ADDRESS ---------------- */
-
-  const handleDeleteAddress = item => {
-    Alert.alert(
-      'Delete Address',
-      `Are you sure you want to delete your ${item.label} address?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const updated = addresses.filter(
-              address => address.id !== item.id,
-            );
-
-            let selectedId = selectedAddressId;
-
-            if (selectedAddressId === item.id) {
-              selectedId = updated[0]?.id || null;
-            }
-
-            await saveAddressList(updated, selectedId);
-          },
-        },
-      ],
-    );
+  // Called by the address sheet after add / edit / delete / select.
+  const handleAddressChange = (updatedAddresses, updatedSelectedId) => {
+    setAddresses(updatedAddresses);
+    setSelectedAddressId(updatedSelectedId);
   };
 
   /* ---------------- LOGOUT ---------------- */
@@ -601,6 +178,7 @@ const ProfileScreen = ({navigation}) => {
         'dkd_mode',
         'dkd_addresses',
         'dkd_selected_address',
+        'dkd_addresses_dirty',
       ]);
 
       navigation.getParent()?.reset({
@@ -639,19 +217,33 @@ const ProfileScreen = ({navigation}) => {
 
   /* ---------------- DISPLAY ADDRESS ---------------- */
 
-  const selectedAddress = addresses.find(
-    item => item.id === selectedAddressId,
-  );
+  const selectedAddress =
+    addresses.find(item => item.id === selectedAddressId) || null;
+
+  const addressTitle = selectedAddress
+    ? `Deliver to ${selectedAddress.label}`
+    : 'Select your delivery address';
+
+  const addressText = selectedAddress
+    ? selectedAddress.fullAddress || createFullAddress(selectedAddress)
+    : 'Tap to add your address';
+
+  /* ---------------- STATUS BAR ---------------- */
+
+  const statusBar = isFocused ? (
+    <StatusBar
+      translucent
+      backgroundColor="transparent"
+      barStyle="light-content"
+    />
+  ) : null;
 
   /* ---------------- LOADING ---------------- */
 
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <StatusBar
-          backgroundColor={colors.primary}
-          barStyle="light-content"
-        />
+        {statusBar}
 
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -668,10 +260,7 @@ const ProfileScreen = ({navigation}) => {
   if (error || !profile) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <StatusBar
-          backgroundColor={colors.primary}
-          barStyle="light-content"
-        />
+        {statusBar}
 
         <View style={styles.centerContainer}>
           <View style={styles.errorIcon}>
@@ -709,10 +298,7 @@ const ProfileScreen = ({navigation}) => {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar
-        backgroundColor={colors.primary}
-        barStyle="light-content"
-      />
+      {statusBar}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -800,167 +386,62 @@ const ProfileScreen = ({navigation}) => {
           </Section>
         )}
 
-        {/* DELIVERY ADDRESSES */}
+        {/* DELIVERY ADDRESS (same sheet as Home) */}
 
         <View style={styles.section}>
           <View style={styles.addressSectionHeader}>
-            <Text style={styles.sectionTitle}>
-              Delivery Addresses
-            </Text>
+            <Text style={styles.sectionTitle}>Delivery Address</Text>
 
             <TouchableOpacity
               style={styles.addButton}
-              onPress={openAddAddress}>
+              activeOpacity={0.85}
+              onPress={() => setAddressSheetVisible(true)}>
               <MaterialCommunityIcons
-                name="plus"
-                size={18}
+                name={selectedAddress ? 'pencil-outline' : 'plus'}
+                size={16}
                 color="#FFFFFF"
               />
 
               <Text style={styles.addButtonText}>
-                Add New
+                {selectedAddress ? 'Change' : 'Add New'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.card}>
-            {addresses.length === 0 ? (
-              <View style={styles.emptyAddress}>
-                <MaterialCommunityIcons
-                  name="map-marker-off-outline"
-                  size={36}
-                  color="#999999"
-                />
+          <TouchableOpacity
+            style={styles.addressCard}
+            activeOpacity={0.85}
+            onPress={() => setAddressSheetVisible(true)}>
+            <View style={styles.addressIconWrap}>
+              <MaterialCommunityIcons
+                name="map-marker"
+                size={20}
+                color={colors.primary}
+              />
+            </View>
 
-                <Text style={styles.emptyAddressTitle}>
-                  No addresses saved
+            <View style={styles.addressTextBlock}>
+              <Text style={styles.addressTitle} numberOfLines={1}>
+                {addressTitle}
+              </Text>
+
+              <Text style={styles.addressText} numberOfLines={2}>
+                {addressText}
+              </Text>
+
+              {addresses.length > 1 && (
+                <Text style={styles.addressCount}>
+                  {addresses.length} saved addresses
                 </Text>
+              )}
+            </View>
 
-                <Text style={styles.emptyAddressText}>
-                  Add a delivery address to make ordering easier.
-                </Text>
-
-                <TouchableOpacity
-                  style={styles.emptyAddButton}
-                  onPress={openAddAddress}>
-                  <Text style={styles.emptyAddButtonText}>
-                    Add Delivery Address
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              addresses.map((item, index) => {
-                const isSelected =
-                  item.id === selectedAddressId;
-
-                return (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.addressItem,
-                      index !== addresses.length - 1 &&
-                        styles.addressDivider,
-                    ]}>
-
-                    <TouchableOpacity
-                      style={styles.addressSelectArea}
-                      onPress={() => handleSelectAddress(item)}
-                      activeOpacity={0.7}>
-
-                      <View style={styles.addressIcon}>
-                        <MaterialCommunityIcons
-                          name={
-                            item.label === 'Work'
-                              ? 'briefcase-outline'
-                              : item.label === 'Other'
-                              ? 'map-marker-outline'
-                              : 'home-outline'
-                          }
-                          size={22}
-                          color={colors.primary}
-                        />
-                      </View>
-
-                      <View style={styles.addressInfo}>
-                        <View style={styles.addressTitleRow}>
-                          <Text style={styles.addressLabel}>
-                            {item.label}
-                          </Text>
-
-                          {isSelected && (
-                            <View style={styles.defaultBadge}>
-                              <Text style={styles.defaultBadgeText}>
-                                DEFAULT
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-
-                        <Text style={styles.addressText}>
-                          {item.fullAddress ||
-                            createFullAddress(item)}
-                        </Text>
-                      </View>
-
-                      <MaterialCommunityIcons
-                        name={
-                          isSelected
-                            ? 'check-circle'
-                            : 'circle-outline'
-                        }
-                        size={22}
-                        color={
-                          isSelected
-                            ? colors.primary
-                            : '#BBBBBB'
-                        }
-                      />
-                    </TouchableOpacity>
-
-                    <View style={styles.addressActions}>
-                      {!isSelected && (
-                        <TouchableOpacity
-                          onPress={() => handleSelectAddress(item)}
-                          style={styles.addressActionButton}>
-                          <Text style={styles.defaultActionText}>
-                            Set Default
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-
-                      <TouchableOpacity
-                        onPress={() => openEditAddress(item)}
-                        style={styles.addressActionButton}>
-                        <MaterialCommunityIcons
-                          name="pencil-outline"
-                          size={15}
-                          color={colors.primary}
-                        />
-
-                        <Text style={styles.addressActionText}>
-                          Edit
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => handleDeleteAddress(item)}
-                        style={styles.addressActionButton}>
-                        <MaterialCommunityIcons
-                          name="delete-outline"
-                          size={16}
-                          color="#D93636"
-                        />
-
-                        <Text style={styles.deleteActionText}>
-                          Delete
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
+            <MaterialCommunityIcons
+              name="chevron-down"
+              size={22}
+              color="#777777"
+            />
+          </TouchableOpacity>
         </View>
 
         {/* ACCOUNT */}
@@ -1009,203 +490,14 @@ const ProfileScreen = ({navigation}) => {
         </Text>
       </ScrollView>
 
-      {/* ---------------- ADDRESS FORM MODAL ---------------- */}
-
-      <Modal
-        visible={formVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFormVisible(false)}>
-
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>
-                  {editingAddressId
-                    ? 'Edit Address'
-                    : 'Add New Address'}
-                </Text>
-
-                <Text style={styles.modalSubtitle}>
-                  Enter your complete delivery details
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => setFormVisible(false)}
-                style={styles.closeButton}>
-                <MaterialCommunityIcons
-                  name="close"
-                  size={23}
-                  color="#333333"
-                />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              ref={scrollRef}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.formContent}>
-
-              {/* ADDRESS LABEL */}
-
-              <Text style={styles.inputLabel}>
-                Save Address As
-              </Text>
-
-              <View style={styles.labelOptions}>
-                {['Home', 'Work', 'Other'].map(label => (
-                  <TouchableOpacity
-                    key={label}
-                    style={[
-                      styles.labelOption,
-                      addressLabel === label &&
-                        styles.labelOptionActive,
-                    ]}
-                    onPress={() => setAddressLabel(label)}>
-
-                    <MaterialCommunityIcons
-                      name={
-                        label === 'Home'
-                          ? 'home-outline'
-                          : label === 'Work'
-                          ? 'briefcase-outline'
-                          : 'map-marker-outline'
-                      }
-                      size={18}
-                      color={
-                        addressLabel === label
-                          ? colors.primary
-                          : '#777777'
-                      }
-                    />
-
-                    <Text
-                      style={[
-                        styles.labelOptionText,
-                        addressLabel === label &&
-                          styles.labelOptionTextActive,
-                      ]}>
-                      {label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* HOUSE */}
-
-              {input(
-                'House / Flat / Building Number',
-                house,
-                setHouse,
-                'house',
-                'Enter house or flat number',
-              )}
-
-              {/* CURRENT LOCATION */}
-
-              <TouchableOpacity
-                style={styles.locationButton}
-                onPress={getCurrentLocation}
-                disabled={isLocating}
-                activeOpacity={0.85}>
-
-                {isLocating ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons
-                      name="crosshairs-gps"
-                      size={20}
-                      color={colors.white}
-                    />
-
-                    <Text style={styles.locationText}>
-                      Use My Current Location
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-
-              {/* AREA */}
-
-              {input(
-                'Area / Street',
-                area,
-                setArea,
-                'area',
-                'Enter area or street',
-              )}
-
-              {/* LANDMARK */}
-
-              {input(
-                'Landmark (Optional)',
-                landmark,
-                setLandmark,
-                'landmark',
-                'Nearby landmark',
-              )}
-
-              {/* CITY */}
-
-              {input(
-                'City',
-                city,
-                setCity,
-                'city',
-                'Enter city',
-              )}
-
-              {/* STATE */}
-
-              {input(
-                'State',
-                state,
-                setState,
-                'state',
-                'Enter state',
-              )}
-
-              {/* PINCODE */}
-
-              {input(
-                'PIN Code',
-                pincode,
-                setPincode,
-                'pincode',
-                '6-digit PIN code',
-                {
-                  keyboardType: 'number-pad',
-                  autoCapitalize: 'none',
-                  maxLength: 6,
-                },
-              )}
-
-              {/* SAVE BUTTON */}
-
-              <TouchableOpacity
-                style={styles.saveAddressButton}
-                onPress={handleSaveAddress}
-                activeOpacity={0.85}>
-
-                <Text style={styles.saveAddressButtonText}>
-                  {editingAddressId
-                    ? 'Update Address'
-                    : 'Save Address'}
-                </Text>
-              </TouchableOpacity>
-
-              <View style={{height: 25}} />
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      {/* DELIVERY ADDRESS BOTTOM SHEET (shared with Home) */}
+      <AddressBottomSheet
+        visible={addressSheetVisible}
+        onClose={() => setAddressSheetVisible(false)}
+        addresses={addresses}
+        selectedId={selectedAddressId}
+        onChange={handleAddressChange}
+      />
     </SafeAreaView>
   );
 };
@@ -1374,7 +666,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  /* ADDRESS LIST */
+  /* DELIVERY ADDRESS */
 
   addressSectionHeader: {
     flexDirection: 'row',
@@ -1399,278 +691,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  addressItem: {
-    paddingVertical: 15,
-  },
-
-  addressDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
-  },
-
-  addressSelectArea: {
+  addressCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
   },
 
-  addressIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+  addressIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: '#EAF5EC',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 11,
+    justifyContent: 'center',
   },
 
-  addressInfo: {
+  addressTextBlock: {
     flex: 1,
+    marginLeft: 12,
     marginRight: 8,
   },
 
-  addressTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-
-  addressLabel: {
+  addressTitle: {
     color: '#222222',
     fontSize: 14,
     fontWeight: '900',
   },
 
-  defaultBadge: {
-    backgroundColor: '#E8F5E9',
-    borderRadius: 5,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-  },
-
-  defaultBadgeText: {
-    fontSize: 9,
-    fontWeight: '900',
-    color: colors.primary,
-  },
-
   addressText: {
-    fontSize: 12,
     color: '#777777',
+    fontSize: 12,
     lineHeight: 18,
-    marginTop: 5,
+    marginTop: 4,
   },
 
-  addressActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    marginTop: 10,
-    gap: 16,
-  },
-
-  addressActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-
-  addressActionText: {
-    fontSize: 12,
+  addressCount: {
     color: colors.primary,
-    fontWeight: '800',
-  },
-
-  defaultActionText: {
-    fontSize: 12,
-    color: colors.primary,
-    fontWeight: '800',
-  },
-
-  deleteActionText: {
-    fontSize: 12,
-    color: '#D93636',
-    fontWeight: '800',
-  },
-
-  emptyAddress: {
-    alignItems: 'center',
-    paddingVertical: 28,
-  },
-
-  emptyAddressTitle: {
-    fontSize: 15,
-    color: '#333333',
-    fontWeight: '900',
-    marginTop: 9,
-  },
-
-  emptyAddressText: {
-    fontSize: 12,
-    color: '#888888',
-    textAlign: 'center',
-    marginTop: 5,
-  },
-
-  emptyAddButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderRadius: 10,
-    marginTop: 16,
-  },
-
-  emptyAddButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 13,
-  },
-
-  /* ADDRESS MODAL */
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-
-  modalSheet: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    paddingHorizontal: 22,
-    paddingTop: 22,
-    maxHeight: '92%',
-  },
-
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-
-  modalTitle: {
-    fontSize: 21,
-    fontWeight: '900',
-    color: colors.black,
-  },
-
-  modalSubtitle: {
-    color: colors.gray,
-    fontSize: 12,
-    marginTop: 5,
-  },
-
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F1F1F1',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  formContent: {
-    paddingBottom: 15,
-  },
-
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 8,
-  },
-
-  labelOptions: {
-    flexDirection: 'row',
-    gap: 9,
-    marginBottom: 8,
-  },
-
-  labelOption: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 11,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 5,
-  },
-
-  labelOptionActive: {
-    backgroundColor: '#E8F5E9',
-    borderColor: colors.primary,
-  },
-
-  labelOptionText: {
-    color: '#777777',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-
-  labelOptionTextActive: {
-    color: colors.primary,
-    fontWeight: '900',
-  },
-
-  field: {
-    marginTop: 14,
-  },
-
-  input: {
-    height: 52,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    color: colors.text,
-    backgroundColor: colors.background,
-    fontSize: 14,
-  },
-
-  inputError: {
-    borderColor: '#D93636',
-  },
-
-  errorText: {
-    color: '#D93636',
     fontSize: 11,
-    marginTop: 5,
-  },
-
-  locationButton: {
-    backgroundColor: colors.primary,
-    minHeight: 48,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 9,
-    marginTop: 17,
-  },
-
-  locationText: {
-    color: colors.white,
-    fontSize: 14,
     fontWeight: '800',
-  },
-
-  saveAddressButton: {
-    backgroundColor: colors.primary,
-    height: 52,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-
-  saveAddressButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '900',
+    marginTop: 6,
   },
 
   /* LOGOUT */

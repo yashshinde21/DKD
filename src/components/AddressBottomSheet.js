@@ -28,9 +28,8 @@ import {
   ADDRESS_LABELS,
   buildFullAddress,
   createAddressId,
+  persistAddressState,
   reverseGeocode,
-  saveAddresses,
-  saveSelectedAddressId,
 } from '../utils/addressHelpers';
 
 /* ---------------- CONSTANTS ---------------- */
@@ -350,7 +349,7 @@ const AddressBottomSheet = ({
 
   const selectAddress = async address => {
     try {
-      await saveSelectedAddressId(address.id);
+      await persistAddressState(addresses, address.id);
       onChange(addresses, address.id);
       handleClose();
     } catch (error) {
@@ -377,8 +376,7 @@ const AddressBottomSheet = ({
         nextSelected = updated.length > 0 ? updated[0].id : null;
       }
 
-      await saveAddresses(updated);
-      await saveSelectedAddressId(nextSelected);
+      await persistAddressState(updated, nextSelected);
 
       onChange(updated, nextSelected);
       setDeleteTarget(null);
@@ -480,20 +478,26 @@ const AddressBottomSheet = ({
 
   /* ----- save ----- */
 
-  const handleSave = async () => {
-    Keyboard.dismiss();
+const handleSave = async () => {
+  console.log('TEST 1: SAVE BUTTON PRESSED');
 
-    const found = validateForm(form);
-    setErrors(found);
-    setFormError('');
+  Keyboard.dismiss();
 
-    if (Object.keys(found).length > 0) {
-      return;
-    }
+  const found = validateForm(form);
+  setErrors(found);
+  setFormError('');
 
-    setSaving(true);
+  console.log('TEST 2: VALIDATION RESULT', found);
 
-    try {
+  if (Object.keys(found).length > 0) {
+    console.log('TEST 3: VALIDATION FAILED');
+    return;
+  }
+
+  setSaving(true);
+
+  try {
+    // Keep all your existing code here.
       const details = {
         label: form.label,
         house: form.house.trim(),
@@ -520,12 +524,9 @@ const AddressBottomSheet = ({
         nextSelected = created.id;
       }
 
-      await saveAddresses(updated);
-
-      if (nextSelected !== selectedId) {
-        await saveSelectedAddressId(nextSelected);
-      }
-
+      await persistAddressState(updated, nextSelected);
+console.log('TEST 4: CALLING ADDRESS SYNC');
+      
       onChange(updated, nextSelected);
 
       setForm(EMPTY_FORM);

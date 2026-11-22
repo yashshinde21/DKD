@@ -159,13 +159,38 @@ export const saveCustomerAddresses = async (req, res) => {
     }
 console.log('ADDRESS SAVE: customer exists:', customerSnapshot.exists);
 console.log('ADDRESS SAVE: writing to Firestore...');
-    await customerRef.update({
-      
-      addresses,
-      selectedAddressId: selectedId,
-      addressesUpdatedAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+// Find the currently selected address
+const selectedAddress =
+  addresses.find(address => address.id === selectedId) || null;
+
+// Save all addresses and update the main delivery address
+await customerRef.update({
+  addresses,
+
+  selectedAddressId: selectedId,
+
+  // Keep the existing profile address field synchronized
+  address: selectedAddress
+    ? {
+        id: selectedAddress.id,
+        label: selectedAddress.label,
+        house: selectedAddress.house,
+        area: selectedAddress.area,
+        landmark: selectedAddress.landmark,
+        city: selectedAddress.city,
+        state: selectedAddress.state,
+        pincode: selectedAddress.pincode,
+        fullAddress: selectedAddress.fullAddress,
+        location: selectedAddress.location,
+      }
+    : null,
+
+  addressesUpdatedAt: FieldValue.serverTimestamp(),
+  updatedAt: FieldValue.serverTimestamp(),
+});
+
+console.log('SELECTED DELIVERY ADDRESS:', selectedAddress?.fullAddress);
+console.log('FIRESTORE ADDRESS UPDATED SUCCESSFULLY');
 
     console.log('ADDRESS SAVE: FIRESTORE WRITE SUCCESS');
 

@@ -63,34 +63,36 @@ export const normalizeAddress = (raw, index = 0) => {
     return null;
   }
 
-  const base = {
-    house: text(raw.house),
-    area: text(raw.area),
-    landmark: text(raw.landmark),
-    city: text(raw.city),
-    state: text(raw.state),
-    pincode: text(raw.pincode),
-  };
+  const house = text(raw.house);
+  const landmark = text(raw.landmark);
 
-  const fullAddress = text(raw.fullAddress) || buildFullAddress(base);
+  // Preserve the complete address from old records.
+  const fullAddress =
+    text(raw.fullAddress) ||
+    buildFullAddress(raw);
 
   if (!fullAddress) {
     return null;
   }
 
-  const latitude = raw.location ? raw.location.latitude : null;
-  const longitude = raw.location ? raw.location.longitude : null;
+  const latitude = raw.location?.latitude ?? null;
+  const longitude = raw.location?.longitude ?? null;
+
   const hasLocation =
     typeof latitude === 'number' &&
     typeof longitude === 'number' &&
     Number.isFinite(latitude) &&
     Number.isFinite(longitude);
 
+  // Only return the new address structure.
   return {
     id: text(raw.id) || `legacy-address-${index}`,
     label: ADDRESS_LABELS.includes(raw.label) ? raw.label : 'Other',
-    ...base,
-    location: hasLocation ? {latitude, longitude} : null,
+    house,
+    landmark,
+    location: hasLocation
+      ? {latitude, longitude}
+      : null,
     fullAddress,
   };
 };
@@ -129,6 +131,10 @@ export const loadAddressState = async () => {
     if (Array.isArray(parsed)) {
       addresses = parsed.map(normalizeAddress).filter(Boolean);
     }
+
+// Replace old local address objects with the cleaned structure.
+    await saveAddresses(addresses);
+
   } catch (error) {
     addresses = [];
   }
@@ -227,7 +233,14 @@ const pushNow = async (addresses, selectedId) => {
 };
 
 export const pushAddressesToServer = (addresses, selectedId) => {
-  pushChain = pushChain.then(() => pushNow(addresses, selectedId));
+  const cleanAddresses = addresses
+    .map(normalizeAddress)
+    .filter(Boolean);
+
+  pushChain = pushChain.then(() =>
+    pushNow(cleanAddresses, selectedId),
+  );
+
   return pushChain;
 };
 
@@ -239,10 +252,17 @@ export const pushAddressesToServer = (addresses, selectedId) => {
 export const persistAddressState = async (addresses, selectedId) => {
   console.log('ADDRESS SYNC: persistAddressState called');
 
-  await saveAddresses(addresses);
+  const cleanAddresses = addresses
+    .map(normalizeAddress)
+    .filter(Boolean);
+
+  await saveAddresses(cleanAddresses);
   await saveSelectedAddressId(selectedId);
 
-  const synced = await pushAddressesToServer(addresses, selectedId);
+  const synced = await pushAddressesToServer(
+    cleanAddresses,
+    selectedId,
+  );
 
   console.log('ADDRESS SYNC RESULT:', synced);
 

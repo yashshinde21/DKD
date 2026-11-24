@@ -14,6 +14,7 @@ import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+import BulkEnquiryScreen from '../screens/BulkEnquiryScreen';
 import LoginScreen from '../screens/LoginScreen';
 import OTPScreen from '../screens/OTPScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -312,6 +313,12 @@ const AppNavigator = () => {
               headerShown: false,
               gestureEnabled: false,
             }}
+          />
+
+          <Stack.Screen
+            name="BulkEnquiry"
+            component={BulkEnquiryScreen}
+            options={{headerShown: false}}
           />
 
           {/* Full-screen search page (opens above the tab bar) */}

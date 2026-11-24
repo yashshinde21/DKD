@@ -344,23 +344,12 @@ const RegisterScreen = ({navigation, route}) => {
           savedProfile.mode || profile.mode,
         );
 
-        Alert.alert(
-          'Profile Saved',
-          'Your details have been saved successfully.',
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                navigation.replace('Home', {
-                  name: savedProfile.name,
-                  email,
-                  mode: savedProfile.mode || profile.mode,
-                  profile: savedProfile,
-                });
-              },
-            },
-          ],
-        );
+        navigation.replace('Home', {
+          name: savedProfile.name,
+          email,
+          mode: savedProfile.mode || profile.mode,
+          profile: savedProfile,
+        });
       }
     } catch (error) {
       console.log(

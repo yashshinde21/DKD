@@ -410,12 +410,7 @@ const HomeScreen = ({navigation, route}) => {
                 <TouchableOpacity
                   style={styles.bulkButton}
                   activeOpacity={0.85}
-                  onPress={() =>
-                    Alert.alert(
-                      'Bulk Enquiry',
-                      'Our team will contact you soon.',
-                    )
-                  }>
+                 onPress={() => navigation.navigate('BulkEnquiry')}>
                   <Text style={styles.bulkButtonText}>Inquire →</Text>
                 </TouchableOpacity>
               </View>

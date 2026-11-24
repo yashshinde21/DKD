@@ -4,25 +4,34 @@ import {FieldValue} from 'firebase-admin/firestore';
 const ADDRESS_LABELS = new Set(['Home', 'Work', 'Other']);
 const MAX_ADDRESSES = 20;
 
-const cleanText = (value, maxLength = 250) =>
+const cleanText = (value, maxLength = 600) =>
   typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
 
-const normalizeAddress = (raw, index) => {
+/*
+ * Converts old and new address objects into the new database structure.
+ * Old fields are used only to recover fullAddress when necessary.
+ * They are never returned or saved separately.
+ */
+const normalizeAddress = (raw, index = 0) => {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return null;
   }
 
   const house = cleanText(raw.house, 120);
-  const area = cleanText(raw.area, 180);
   const landmark = cleanText(raw.landmark, 180);
-  const city = cleanText(raw.city, 100);
-  const state = cleanText(raw.state, 100);
-  const pincode = cleanText(raw.pincode, 6).replace(/\D/g, '').slice(0, 6);
 
-  const suppliedFullAddress = cleanText(raw.fullAddress, 600);
   const fullAddress =
-    suppliedFullAddress ||
-    [house, area, landmark, city, state, pincode].filter(Boolean).join(', ');
+    cleanText(raw.fullAddress) ||
+    [
+      house,
+      cleanText(raw.area, 180),
+      landmark,
+      cleanText(raw.city, 100),
+      cleanText(raw.state, 100),
+      cleanText(raw.pincode, 10),
+    ]
+      .filter(Boolean)
+      .join(', ');
 
   if (!fullAddress) {
     return null;
@@ -46,13 +55,9 @@ const normalizeAddress = (raw, index) => {
     id: cleanText(raw.id, 100) || `address-${index}`,
     label: ADDRESS_LABELS.has(raw.label) ? raw.label : 'Other',
     house,
-    area,
     landmark,
-    city,
-    state,
-    pincode,
-    location,
     fullAddress,
+    location,
   };
 };
 
@@ -60,8 +65,6 @@ const normalizeAddress = (raw, index) => {
 export const getCustomerAddresses = async (req, res) => {
   try {
     const email = req.user.email;
-    console.log('ADDRESS SAVE: authenticated email:', email);
-console.log('ADDRESS SAVE: request body:', JSON.stringify(req.body));
     const customerRef = db.collection('customers').doc(email);
     const snapshot = await customerRef.get();
 
@@ -73,20 +76,57 @@ console.log('ADDRESS SAVE: request body:', JSON.stringify(req.body));
     }
 
     const customer = snapshot.data() || {};
-    const addresses = Array.isArray(customer.addresses)
+
+    const rawAddresses = Array.isArray(customer.addresses)
       ? customer.addresses
       : [];
 
+    // Convert old address records into the new structure.
+    const addresses = rawAddresses
+      .map(normalizeAddress)
+      .filter(Boolean);
+
     const storedSelectedId = customer.selectedAddressId || null;
+
     const selectedAddress =
       addresses.find(address => address.id === storedSelectedId) ||
       addresses[0] ||
       null;
 
+    const selectedId = selectedAddress?.id || null;
+
+    // Also clean the main customer address field.
+    const cleanedMainAddress = customer.address
+      ? normalizeAddress(customer.address)
+      : null;
+
+    // Update Firestore only when old address fields need cleaning.
+    const oldAddressesJSON = JSON.stringify(rawAddresses);
+    const newAddressesJSON = JSON.stringify(addresses);
+
+    const oldMainAddressJSON = JSON.stringify(customer.address || null);
+    const newMainAddressJSON = JSON.stringify(cleanedMainAddress);
+
+    if (
+      oldAddressesJSON !== newAddressesJSON ||
+      oldMainAddressJSON !== newMainAddressJSON ||
+      storedSelectedId !== selectedId
+    ) {
+      await customerRef.update({
+        addresses,
+        selectedAddressId: selectedId,
+        address: cleanedMainAddress,
+        addressesUpdatedAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      console.log('OLD ADDRESS FIELDS CLEANED:', email);
+    }
+
     return res.status(200).json({
       success: true,
       addresses,
-      selectedId: selectedAddress?.id || null,
+      selectedId,
     });
   } catch (error) {
     console.error('Get customer addresses error:', error);
@@ -99,7 +139,7 @@ console.log('ADDRESS SAVE: request body:', JSON.stringify(req.body));
 };
 
 // PUT /api/auth/customer/addresses
-// Replaces the signed-in customer's saved address list and selected address.
+// Saves the customer's addresses using the new structure.
 export const saveCustomerAddresses = async (req, res) => {
   try {
     const email = req.user.email;
@@ -120,9 +160,11 @@ export const saveCustomerAddresses = async (req, res) => {
       });
     }
 
-    const addresses = incomingAddresses.map(normalizeAddress);
+    const addresses = incomingAddresses
+      .map(normalizeAddress)
+      .filter(Boolean);
 
-    if (addresses.some(address => !address)) {
+    if (addresses.length !== incomingAddresses.length) {
       return res.status(400).json({
         success: false,
         message: 'One or more addresses are invalid.',
@@ -130,6 +172,7 @@ export const saveCustomerAddresses = async (req, res) => {
     }
 
     const ids = addresses.map(address => address.id);
+
     if (new Set(ids).size !== ids.length) {
       return res.status(400).json({
         success: false,
@@ -139,7 +182,7 @@ export const saveCustomerAddresses = async (req, res) => {
 
     const selectedId = requestedSelectedId
       ? String(requestedSelectedId)
-      : (addresses[0]?.id || null);
+      : addresses[0]?.id || null;
 
     if (selectedId && !ids.includes(selectedId)) {
       return res.status(400).json({
@@ -154,45 +197,26 @@ export const saveCustomerAddresses = async (req, res) => {
     if (!customerSnapshot.exists) {
       return res.status(404).json({
         success: false,
-        message: 'Customer profile not found. Please complete registration first.',
+        message:
+          'Customer profile not found. Please complete registration first.',
       });
     }
-console.log('ADDRESS SAVE: customer exists:', customerSnapshot.exists);
-console.log('ADDRESS SAVE: writing to Firestore...');
-// Find the currently selected address
-const selectedAddress =
-  addresses.find(address => address.id === selectedId) || null;
 
-// Save all addresses and update the main delivery address
-await customerRef.update({
-  addresses,
+    const selectedAddress =
+      addresses.find(address => address.id === selectedId) || null;
 
-  selectedAddressId: selectedId,
+    await customerRef.update({
+      addresses,
+      selectedAddressId: selectedId,
 
-  // Keep the existing profile address field synchronized
-  address: selectedAddress
-    ? {
-        id: selectedAddress.id,
-        label: selectedAddress.label,
-        house: selectedAddress.house,
-        area: selectedAddress.area,
-        landmark: selectedAddress.landmark,
-        city: selectedAddress.city,
-        state: selectedAddress.state,
-        pincode: selectedAddress.pincode,
-        fullAddress: selectedAddress.fullAddress,
-        location: selectedAddress.location,
-      }
-    : null,
+      // Keep the main delivery address synchronized.
+      address: selectedAddress,
 
-  addressesUpdatedAt: FieldValue.serverTimestamp(),
-  updatedAt: FieldValue.serverTimestamp(),
-});
+      addressesUpdatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
-console.log('SELECTED DELIVERY ADDRESS:', selectedAddress?.fullAddress);
-console.log('FIRESTORE ADDRESS UPDATED SUCCESSFULLY');
-
-    console.log('ADDRESS SAVE: FIRESTORE WRITE SUCCESS');
+    console.log('FIRESTORE ADDRESS UPDATED SUCCESSFULLY:', email);
 
     return res.status(200).json({
       success: true,

@@ -1,8 +1,8 @@
-import React, {useState, useRef, useEffect} from 'react';
-
+import React, {useState, useRef, useEffect, useMemo} from 'react';
 import {
   View,
   Text,
+  Image,
   TouchableOpacity,
   ScrollView,
   FlatList,
@@ -21,7 +21,8 @@ import AddControl from '../components/AddControl';
 import CartBar from '../components/CartBar';
 import VoiceSearchModal from '../components/VoiceSearchModal';
 import {useCart} from '../context/CartContext';
-import {categories, fruits, deals, discountPercent} from '../data/fruits';
+import {categories, discountPercent} from '../data/fruits';
+import {fetchFruits} from '../data/firestoreService';
 import {
   loadAddressState,
   syncAddressStateWithServer,
@@ -36,6 +37,42 @@ const SLIDE_INTERVAL = SLIDE_WIDTH + SLIDE_GAP;
 
 const HomeScreen = ({navigation, route}) => {
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [fruits, setFruits] = useState([]);
+  const [loadingFruits, setLoadingFruits] = useState(true);
+
+  // 1. Fetch fruits from Firestore
+  useEffect(() => {
+    const loadFruits = async () => {
+      try {
+        const data = await fetchFruits();
+
+        const availableFruits = data.filter(
+          item => item.available !== false,
+        );
+
+        setFruits(availableFruits);
+      } catch (error) {
+        console.error('Failed to load fruits:', error);
+      } finally {
+        setLoadingFruits(false);
+      }
+    };
+
+    loadFruits();
+  }, []);
+
+  // 2. Calculate deals from Firestore fruits
+  const deals = useMemo(
+    () =>
+      fruits
+        .filter(item => discountPercent(item) > 0)
+        .sort(
+          (a, b) => discountPercent(b) - discountPercent(a),
+        )
+        .slice(0, 5),
+    [fruits],
+  );
+
   const [activeDeal, setActiveDeal] = useState(0);
   const [voiceVisible, setVoiceVisible] = useState(false);
 
@@ -186,37 +223,45 @@ const HomeScreen = ({navigation, route}) => {
   );
 
   // Deal card.
-  const renderDeal = ({item}) => (
-    <View style={[styles.dealCard, {backgroundColor: item.bg}]}>
-      <View style={styles.dealContent}>
-        <View style={styles.dealBadge}>
-          <Text style={styles.dealDiscount}>{discountPercent(item)}% OFF</Text>
-        </View>
-
-        <Text style={styles.dealName}>{item.name}</Text>
-
-        <Text style={styles.dealDescription}>{item.description}</Text>
-
-        <View style={styles.dealPriceRow}>
-          <Text style={styles.dealPrice}>₹{item.price}</Text>
-          <Text style={styles.dealMrp}>₹{item.mrp}</Text>
-          <Text style={styles.dealUnit}>/ {item.unit}</Text>
-        </View>
-
-        <View style={styles.dealAction}>
-          <AddControl
-            qty={cart[item.id] || 0}
-            onAdd={() => addToCart(item.id)}
-            onRemove={() => removeFromCart(item.id)}
-            onDark
-            color={colors.primary}
-          />
-        </View>
+const renderDeal = ({item}) => (
+  <View
+    style={[
+      styles.dealCard,
+      {backgroundColor: '#F3F4F1'},
+    ]}>
+    <View style={styles.dealContent}>
+      <View style={styles.dealBadge}>
+        <Text style={styles.dealDiscount}>
+          {discountPercent(item)}% OFF
+        </Text>
       </View>
 
-      <Text style={styles.dealEmoji}>{item.emoji}</Text>
+      <Text style={styles.dealName}>{item.name}</Text>
+
+      <Text style={styles.dealDescription}>
+        {item.description}
+      </Text>
+
+      <View style={styles.dealPriceRow}>
+        <Text style={styles.dealPrice}>₹{item.price}</Text>
+        <Text style={styles.dealMrp}>₹{item.mrp}</Text>
+        <Text style={styles.dealUnit}>/ {item.unit}</Text>
+      </View>
+
+      <View style={styles.dealAction}>
+        <AddControl
+          qty={cart[item.id] || 0}
+          onAdd={() => addToCart(item.id)}
+          onRemove={() => removeFromCart(item.id)}
+          onDark
+          color={colors.primary}
+        />
+      </View>
     </View>
-  );
+
+    <Text style={styles.dealEmoji}>🍎</Text>
+  </View>
+);
 
   return (
     <View style={styles.safeArea}>
@@ -433,6 +478,15 @@ const HomeScreen = ({navigation, route}) => {
             </Text>
           </View>
 
+          {loadingFruits ? (
+          <Text style={{textAlign: 'center', marginVertical: 25}}>
+            Loading fruits...
+          </Text>
+        ) : filteredFruits.length === 0 ? (
+          <Text style={{textAlign: 'center', marginVertical: 25}}>
+            No fruits available.
+          </Text>
+        ) : (
           <View style={styles.productGrid}>
             {filteredFruits.map(fruit => {
               const off = discountPercent(fruit);
@@ -440,14 +494,21 @@ const HomeScreen = ({navigation, route}) => {
               return (
                 <View key={fruit.id} style={styles.productCard}>
                   <View
-                    style={[styles.productImage, {backgroundColor: fruit.bg}]}>
+                    style={[
+                      styles.productImage,
+                      {backgroundColor: '#F3F4F1'},
+                    ]}>
                     {off > 0 && (
                       <View style={styles.offBadge}>
                         <Text style={styles.offBadgeText}>{off}% OFF</Text>
                       </View>
                     )}
 
-                    <Text style={styles.fruitEmoji}>{fruit.emoji}</Text>
+                    <Image
+                      source={{uri: fruit.imageUrl}}
+                      style={styles.fruitEmoji}
+                      resizeMode="contain"
+                    />
                   </View>
 
                   <Text style={styles.productUnit}>{fruit.unit}</Text>
@@ -463,7 +524,6 @@ const HomeScreen = ({navigation, route}) => {
                   <View style={styles.productBottom}>
                     <View>
                       <Text style={styles.price}>₹{fruit.price}</Text>
-
                       {off > 0 && <Text style={styles.mrp}>₹{fruit.mrp}</Text>}
                     </View>
 
@@ -478,6 +538,7 @@ const HomeScreen = ({navigation, route}) => {
               );
             })}
           </View>
+        )}
 
           {/* FOOTER */}
           <View style={styles.footer}>
@@ -931,9 +992,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  fruitEmoji: {
-    fontSize: 54,
-  },
+fruitEmoji: {
+  width: 100,
+  height: 100,
+},
 
   productUnit: {
     marginTop: 10,

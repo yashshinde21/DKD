@@ -416,7 +416,7 @@ const HomeScreen = ({navigation, route}) => {
                       'Our team will contact you soon.',
                     )
                   }>
-                  <Text style={styles.bulkButtonText}>Enquire →</Text>
+                  <Text style={styles.bulkButtonText}>Inquire →</Text>
                 </TouchableOpacity>
               </View>
             </>

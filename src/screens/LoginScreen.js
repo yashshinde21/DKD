@@ -12,7 +12,6 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 
 import colors from '../theme/colors';
@@ -50,22 +49,11 @@ const LoginScreen = ({navigation}) => {
         email: normalizedEmail,
       });
 
-      if (response.data?.success) {
-        Alert.alert(
-          'OTP Sent',
-          'A verification code has been sent to your email.',
-          [
-            {
-              text: 'Continue',
-              onPress: () => {
-                navigation.navigate('OTP', {
-                  email: normalizedEmail,
-                });
-              },
-            },
-          ],
-        );
-      } else {
+if (response.data?.success) {
+  navigation.navigate('OTP', {
+    email: normalizedEmail,
+  });
+} else {
         setError(
           response.data?.message || 'Unable to send OTP.',
         );

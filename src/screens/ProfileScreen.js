@@ -168,34 +168,54 @@ const ProfileScreen = ({navigation}) => {
 
   /* ---------------- LOGOUT ---------------- */
 
-  const performLogout = async () => {
-    try {
-      setLoggingOut(true);
+const performLogout = async () => {
+  try {
+    setLoggingOut(true);
 
-      await AsyncStorage.multiRemove([
-        'dkd_token',
-        'dkd_user',
-        'dkd_mode',
-        'dkd_addresses',
-        'dkd_selected_address',
-        'dkd_addresses_dirty',
-      ]);
+    console.log('LOGOUT: Starting...');
 
-      navigation.getParent()?.reset({
-        index: 0,
-        routes: [{name: 'Login'}],
-      });
-    } catch (err) {
-      console.log('LOGOUT ERROR:', err.message);
+    const keysToRemove = [
+      'dkd_token',
+      'dkd_user',
+      'dkd_mode',
+      'dkd_addresses',
+      'dkd_selected_address',
+      'dkd_addresses_dirty',
+    ];
 
-      Alert.alert(
-        'Error',
-        'Unable to logout. Please try again.',
-      );
-
-      setLoggingOut(false);
+    for (const key of keysToRemove) {
+      await AsyncStorage.removeItem(key);
+      console.log(`LOGOUT: Removed ${key}`);
     }
-  };
+
+    // Verify session is cleared
+    const token = await AsyncStorage.getItem('dkd_token');
+
+    if (token !== null) {
+      throw new Error('Session token could not be cleared.');
+    }
+
+    console.log('LOGOUT: Session cleared successfully');
+
+    // Return to Login
+    const rootNavigation = navigation.getParent()?.getParent() || navigation.getParent() || navigation;
+
+    rootNavigation.reset({
+      index: 0,
+      routes: [{name: 'Login'}],
+    });
+
+  } catch (err) {
+    console.log('LOGOUT ERROR:', err);
+
+    Alert.alert(
+      'Logout Failed',
+      err.message || 'Unable to logout. Please try again.',
+    );
+
+    setLoggingOut(false);
+  }
+};
 
   const handleLogout = () => {
     Alert.alert(

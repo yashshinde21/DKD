@@ -262,6 +262,10 @@ const handleVerify = async () => {
               autoFocus
               caretHidden
               editable={!loading}
+              autoComplete="one-time-code"
+              textContentType="oneTimeCode"
+              importantForAutofill="yes"
+              autoCorrect={false}
               style={styles.hiddenInput}
             />
           </View>

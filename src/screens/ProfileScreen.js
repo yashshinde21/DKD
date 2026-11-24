@@ -89,76 +89,120 @@ const ProfileScreen = ({navigation}) => {
 
   /* ---------------- FETCH PROFILE ---------------- */
 
-  const fetchProfile = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(false);
+const fetchProfile = useCallback(async () => {
+  try {
+    setError(false);
 
-      const token = await AsyncStorage.getItem('dkd_token');
+    // Display saved customer information immediately
+    const cachedUser = await AsyncStorage.getItem('dkd_user');
 
-      if (!token) {
-        setError(true);
-        return;
-      }
+    if (cachedUser) {
+      const parsedUser = JSON.parse(cachedUser);
+      const cachedProfile = parsedUser.profile || parsedUser;
 
-      const response = await API.get('/auth/customer/me', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.data?.success && response.data?.user) {
-        setProfile(response.data.user);
-      } else {
-        setError(true);
-      }
-    } catch (err) {
-      console.log(
-        'PROFILE ERROR:',
-        err.response?.data || err.message,
-      );
-      setError(true);
-    } finally {
+      setProfile(cachedProfile);
       setLoading(false);
+    } else {
+      setLoading(true);
     }
-  }, []);
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', fetchProfile);
+    // Refresh customer information from backend
+    const token = await AsyncStorage.getItem('dkd_token');
 
+    if (!token) {
+      setProfile(null);
+      setError(true);
+      return;
+    }
+
+    const response = await API.get('/auth/customer/me', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (response.data?.success && response.data?.user) {
+      const latestUser = response.data.user;
+
+      setProfile(latestUser);
+
+      // Update local cache
+      const existingUser = cachedUser
+        ? JSON.parse(cachedUser)
+        : {};
+
+      await AsyncStorage.setItem(
+        'dkd_user',
+        JSON.stringify({
+          ...existingUser,
+          ...latestUser,
+        }),
+      );
+    } else if (!cachedUser) {
+      setError(true);
+    }
+
+  } catch (err) {
+    console.log(
+      'PROFILE ERROR:',
+      err.response?.data || err.message,
+    );
+
+    // Keep cached profile visible if available
+    if (!profile) {
+      setError(true);
+    }
+  } finally {
+    setLoading(false);
+  }
+}, []);
+
+
+useEffect(() => {
+  const unsubscribe = navigation.addListener('focus', () => {
     fetchProfile();
+    refreshAddresses();
+  });
 
-    return unsubscribe;
-  }, [navigation, fetchProfile]);
+  return unsubscribe;
+}, [navigation, fetchProfile, refreshAddresses]);
 
   /* ---------------- LOAD ADDRESSES ---------------- */
 
   // Same loading as Home: the phone copy first, then the server (Firebase).
-  const refreshAddresses = useCallback(async () => {
-    try {
-      const state = await loadAddressState();
+const refreshAddresses = useCallback(async () => {
+  try {
+    // Show local addresses immediately
+    const localState = await loadAddressState();
 
-      setAddresses(state.addresses);
-      setSelectedAddressId(state.selectedId);
+    setAddresses(localState.addresses);
+    setSelectedAddressId(localState.selectedId);
 
-      const synced = await syncAddressStateWithServer();
+    // Synchronize with server in background
+    syncAddressStateWithServer()
+      .then(synced => {
+        if (synced) {
+          setAddresses(synced.addresses);
+          setSelectedAddressId(synced.selectedId);
+        }
+      })
+      .catch(err => {
+        console.log('BACKGROUND ADDRESS SYNC:', err.message);
+      });
 
-      if (synced) {
-        setAddresses(synced.addresses);
-        setSelectedAddressId(synced.selectedId);
-      }
-    } catch (err) {
-      console.log('ADDRESS LOAD ERROR:', err.message);
-    }
-  }, []);
+  } catch (err) {
+    console.log('ADDRESS LOAD ERROR:', err.message);
+  }
+}, []);
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', refreshAddresses);
-
+useEffect(() => {
+  const unsubscribe = navigation.addListener('focus', () => {
+    fetchProfile();
     refreshAddresses();
+  });
 
-    return unsubscribe;
-  }, [navigation, refreshAddresses]);
+  return unsubscribe;
+}, [navigation, fetchProfile, refreshAddresses]);
 
   // Called by the address sheet after add / edit / delete / select.
   const handleAddressChange = (updatedAddresses, updatedSelectedId) => {

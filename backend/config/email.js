@@ -5,7 +5,7 @@ export const sendOTPEmail = async (email, otp) => {
     {
       method: 'POST',
       headers: {
-        'accept': 'application/json',
+        accept: 'application/json',
         'api-key': process.env.BREVO_API_KEY,
         'content-type': 'application/json',
       },
@@ -16,18 +16,133 @@ export const sendOTPEmail = async (email, otp) => {
         },
         to: [{ email }],
         subject: 'Your DKD Fruits Verification Code',
+
         htmlContent: `
-          <div style="font-family:Arial;padding:25px">
-            <h2 style="color:#245C32">DKD Fruits</h2>
-            <h3>Email Verification</h3>
-            <p>Your verification code is:</p>
-            <h1 style="letter-spacing:8px;color:#245C32">
-              ${otp}
-            </h1>
-            <p>This code expires in 5 minutes.</p>
-            <p>Please do not share this code with anyone.</p>
-            <p>Trusted since 1938.</p>
-          </div>
+          <!DOCTYPE html>
+          <html>
+          <body style="
+            margin:0;
+            padding:20px;
+            background-color:#f5f7f5;
+            font-family:Arial,sans-serif;
+          ">
+
+            <div style="
+              max-width:480px;
+              margin:20px auto;
+              background:#ffffff;
+              border-radius:14px;
+              padding:30px 22px;
+              text-align:center;
+            ">
+
+              <h1 style="
+                color:#245C32;
+                font-size:27px;
+                margin-bottom:5px;
+              ">
+                DKD FRUITS
+              </h1>
+
+              <p style="color:#888;font-size:12px;">
+                TRUSTED SINCE 1938
+              </p>
+
+              <div style="
+                height:1px;
+                background:#eeeeee;
+                margin:22px 0;
+              "></div>
+
+              <h2 style="color:#222;">
+                Verify Your Email
+              </h2>
+
+              <p style="
+                color:#666;
+                font-size:15px;
+                line-height:24px;
+              ">
+                Use the verification code below to continue
+                with your DKD Fruits account.
+              </p>
+
+              <div style="
+                background:#f0f6f0;
+                border:1px dashed #245C32;
+                border-radius:12px;
+                padding:22px 10px;
+                margin:25px 0;
+              ">
+
+                <p style="
+                  color:#245C32;
+                  font-size:12px;
+                  font-weight:bold;
+                  letter-spacing:2px;
+                  margin-top:0;
+                ">
+                  YOUR OTP CODE
+                </p>
+
+                <div style="
+                  color:#245C32;
+                  font-size:34px;
+                  font-weight:bold;
+                  letter-spacing:9px;
+                  padding-left:9px;
+                  user-select:all;
+                  -webkit-user-select:all;
+                ">
+                  ${otp}
+                </div>
+
+                <p style="
+                  color:#777;
+                  font-size:12px;
+                  margin-bottom:0;
+                ">
+                  Press and hold the code to copy it
+                </p>
+
+              </div>
+
+              <p style="
+                color:#555;
+                font-size:14px;
+              ">
+                This verification code expires in
+                <strong>5 minutes</strong>.
+              </p>
+
+              <p style="
+                color:#999;
+                font-size:12px;
+                line-height:20px;
+                margin-top:25px;
+              ">
+                Please do not share this code with anyone.
+                If you did not request this code, ignore this email.
+              </p>
+
+              <div style="
+                height:1px;
+                background:#eeeeee;
+                margin:22px 0;
+              "></div>
+
+              <p style="
+                color:#245C32;
+                font-weight:bold;
+                font-size:13px;
+              ">
+                DKD FRUITS
+              </p>
+
+            </div>
+
+          </body>
+          </html>
         `,
       }),
     },
